@@ -62,6 +62,9 @@ delegated mutation or independent review. Before delegated work, capture and
 verify the frozen ledger and exact input files with `loopctl.py fingerprint`.
 On `STALE_INPUT`, re-read and reissue the packet.
 
+Run ledger-mutating `loopctl.py` commands serially. Atomic replacement prevents
+partial files; it is not a multi-writer lock.
+
 Run independent reads in parallel. Sequence overlapping writes or isolate them
 in Git worktrees. Preserve source NX/Flomaster files and confirm rollback before
 mutation.
@@ -130,3 +133,9 @@ This is a hybrid harness: scripts verify mechanical evidence; the coordinator
 still classifies semantic facts and must invoke them. The self-test validates the
 controller, not workflow usefulness. Do not add hooks, states, or new framework
 layers until a real Vue/NX/Flomaster run exposes a repeated failure.
+
+Command-evidence freshness currently covers the contract, verifier definition,
+and declared artifact hashes. `stop` does not rerun the verifier or hash
+undeclared source files. After a merge, rebase, or relevant source/test change,
+rerun acceptance immediately before `stop` until scoped fingerprints are wired
+into the stop gate.

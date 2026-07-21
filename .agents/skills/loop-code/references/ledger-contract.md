@@ -73,6 +73,10 @@ closes a critical unknown only with `user_accepted: true`.
 command evidence. `loopctl.py stop` rejects evidence when its contract, verifier,
 or declared artifact hash no longer matches current state.
 
+The current controller does not hash undeclared verifier inputs. Artifact-free
+command evidence is therefore not drift-proof: rerun it after any relevant
+source, test, merge, or rebase change and immediately before `stop`.
+
 For a risky change, record rollback in `baseline.rollback`. Convert premortem or
 review findings into critical unknowns or acceptance criteria instead of adding
 a second workflow schema. Capture and verify a final fingerprint when another

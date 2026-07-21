@@ -3,6 +3,26 @@
 `loop-code`에서 실제 공통점이 확인되기 전에는 별도 `loop-core` abstraction을 만들지
 않는다. 새 framework 기능이나 후속 skill보다 실제 UAT를 먼저 수행한다.
 
+## 2026-07-21 critical review 반영
+
+실제 재현으로 확인한 최우선 결함은 artifact 없는 command acceptance가 통과한 뒤
+`scope.in` source가 바뀌어도 `stop`이 `STOP_SUCCESS`를 반환하는 것이다. 기존
+self-test는 declared artifact drift만 검사한다.
+
+P0 전에 다음 최소 수정만 한다.
+
+1. command evidence에 exact scoped-file fingerprint를 연결하고 `stop`에서 재검증한다.
+2. source drift 재현을 controller self-test에 추가한다.
+3. critical unknown의 `verified`/`resolved`에는 non-empty evidence를 요구한다.
+4. 현재 여러 문서에 반복된 stop-state 설명은 code와 `SKILL.md`를 정본으로 접는다.
+
+지금 추가하지 않는 것은 triage 점수/verifier, ledger lock, user-acceptance 서명 체계,
+추가 state와 framework layer다. Ledger writer는 coordinator 하나로 유지하고
+ledger-mutating command를 직렬 실행한다. Worktree는 overlapping source writes가
+있을 때만 사용하며 canonical ledger를 worker별로 복제하지 않는다. 현재
+`user_accepted`는 trusted-coordinator policy이지 기계적으로 인증된 provenance가
+아님을 명시한다.
+
 ## P0 — 실제 변경 UAT
 
 1. 대규모 Vue cross-component 변경 1건
@@ -12,6 +32,10 @@
 각 run에서 사용된 gate, ceremony 시간, 발견한 오류, stale-input 발생, 재작업 감소,
 쓰이지 않은 ledger field를 기록한다. 쓰이지 않은 field/state는 제거하고, 반복된
 실패를 막는 최소 장치만 추가한다. Controller self-test는 UAT로 세지 않는다.
+
+Vue P0는 이 repository에 demo app을 만드는 일이 아니다. 실제 Vue project의 실제
+cross-component 변경에 goal → triage → ledger → implement → evidence → stop 전체를
+적용하고, framework 비용과 효용을 관찰하는 첫 field test다.
 
 ## P1 — `loop-search`
 

@@ -2,7 +2,7 @@
 
 - 작성일: 2026-07-21
 - 현재 구현: Claude Code와 Codex 공용 `loop-code` v0.4
-- 상태: controller 검증 완료, 실제 Vue/NX/Flomaster UAT 미완료
+- 상태: 양 runtime discovery 확인, controller 검증 완료, 실제 Vue/NX/Flomaster UAT 미완료
 
 ## 운영 문서
 
@@ -43,5 +43,6 @@
 - [loopctl.py](../.agents/skills/loop-code/scripts/loopctl.py)
 
 Controller unit self-test, JSON/schema, command evidence, stale artifact rejection,
-five-state stop, junction identity는 확인했다. Workflow usefulness는 실제 UAT 뒤에만
-판정한다.
+five-state stop, Codex skill discovery, Claude read-only trigger, junction identity는
+확인했다. Artifact 없는 command evidence의 source drift는 알려진 P0 전 수정 항목이다.
+Workflow usefulness는 실제 UAT 뒤에만 판정한다.
