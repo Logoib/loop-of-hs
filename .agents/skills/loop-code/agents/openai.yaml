@@ -1,0 +1,4 @@
+interface:
+  display_name: "Loop Code"
+  short_description: "Evidence-gated loops for complex code changes"
+  default_prompt: "Use $loop-code to triage and execute this code change with evidence-gated verification."

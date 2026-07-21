@@ -1,0 +1,4 @@
+.loop/
+.claude/skills/loop-code/
+__pycache__/
+*.pyc

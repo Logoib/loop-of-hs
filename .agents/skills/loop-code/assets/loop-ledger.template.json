@@ -1,0 +1,45 @@
+{
+  "schema_version": 3,
+  "task_id": "",
+  "objective": "",
+  "scope": {
+    "in": [],
+    "out": [],
+    "interfaces": []
+  },
+  "baseline": {
+    "workspace": "",
+    "revision": null,
+    "environment": {},
+    "protected_inputs": [],
+    "rollback": ""
+  },
+  "authority": {
+    "allowed_writes": [],
+    "forbidden_actions": [],
+    "requires_user_approval": [],
+    "blocked": false
+  },
+  "limits": {
+    "max_iterations": null,
+    "deadline": null
+  },
+  "control": {
+    "safety_stop": false,
+    "budget_exhausted": false,
+    "reasons": []
+  },
+  "progress": {
+    "iteration": 0
+  },
+  "acceptance": [],
+  "unknowns": [],
+  "decisions": [],
+  "handoff": {
+    "current_focus": "",
+    "changed_paths": [],
+    "failed_attempts": [],
+    "blockers": [],
+    "next_action": ""
+  }
+}

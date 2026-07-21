@@ -1,0 +1,20 @@
+{
+  "task_id": "",
+  "run_id": "",
+  "role": "",
+  "objective": "",
+  "fingerprint_snapshot": "",
+  "scope": [],
+  "interfaces": [],
+  "out_of_scope": [],
+  "allowed_writes": [],
+  "facts": [],
+  "acceptance_ids": [],
+  "expected_artifacts": [],
+  "failure_return": [
+    "attempts",
+    "partial_result",
+    "blocker",
+    "recommended_next_action"
+  ]
+}
