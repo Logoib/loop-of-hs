@@ -1,6 +1,6 @@
 ---
 name: loop-code
-description: Triage and execute complex code changes through a small ledger-driven loop with command evidence and stale-input fingerprints. Use for cross-component or multi-session changes, migrations, shared interfaces, large web applications, external NX or Flomaster integrations, or code changes with rollback or silent-corruption risk. Do not use for research-only work, report generation, or a clearly one-step edit.
+description: Triage and execute complex code changes through a small ledger-driven loop with command evidence, stale-input fingerprints, and just-in-time lookup of shared department knowledge. Use for cross-component or multi-session changes, migrations, shared interfaces, large web applications, external NX or Flomaster integrations, or code changes with rollback or silent-corruption risk. Do not use for research-only work, report generation, or a clearly one-step edit.
 ---
 
 # Loop Code
@@ -44,6 +44,24 @@ Record only useful uncertainty:
 - **KU**: explicit question with the cheapest decisive probe;
 - **UK**: likely knowledge in code, tests, history, docs, tools, or the user;
 - **UU**: blind-spot hypothesis plus a falsification probe.
+
+Treat the curated shared KG wiki as the source of truth for reusable department
+procedures, terminology, design rationale, lessons learned, and tacit knowledge.
+It does not override repository code/tests, live external state, or a current
+user decision.
+
+Before asking the user or copying a department rule into the ledger, run
+`kg-lookup` with the original objective and current slice. Let a worker with KG
+access call it directly, just in time; do not make the coordinator pre-search
+every task. If lookup finds nothing useful, record the gap as an unknown.
+
+Preload only a KG fact that is mandatory for safety, the frozen contract, or
+consistent parallel work. Put its short statement and KG-relative wiki path in
+the existing task-packet `facts`. If that exact note snapshot must remain fixed,
+include the note path in the existing `loopctl.py fingerprint` scope so its
+SHA-256 is captured with the other inputs. Do not copy note bodies or search
+transcripts into the ledger, and do not add a retrieval manifest, index revision,
+or separate KG-staleness state until a real run demonstrates the need.
 
 Build the smallest plan that closes acceptance criteria. Use a fresh-context
 premortem only for irreversible or persisted changes, shared migrations,
