@@ -23,7 +23,11 @@ goal
 
 검증이 plan을 무효화했을 때만 재계획한다. Premortem은 매 반복이 아니라
 irreversible/persisted 변경, shared migration, NX/Flomaster write, 단위·좌표·물성,
-silent corruption, 불명확한 rollback에만 수행한다.
+silent corruption, 불명확한 rollback에만 수행한다. 이때 같은 frozen task packet을
+받은 fresh Thesis와 Anti-thesis를 독립 실행한 뒤, Synthesis가 두 결과를 contract와
+verifier에 대조한다. 살아남은 finding만 unknown 또는 acceptance criterion으로
+흡수한다. Candidate artifact 이후에는 Codex에서 `$claude-adversarial-review`,
+Claude Code에서 `/codex:adversarial-review`로 한 차례 교차 검토한다.
 
 Codex의 한 줄 시작 예시는 다음과 같다.
 
@@ -62,7 +66,7 @@ acceptance, unknowns, decisions, handoff만 유지한다. Command verifier는 sh
 세 기능만 제공한다.
 
 - `fingerprint capture/verify`: contract, exact files, 선택적 Git HEAD 검증
-- `run`: verifier 실행, exit code/output SHA/artifact SHA/contract SHA 기록
+- `run`: verifier 실행, exit/output/artifact SHA와 workspace/protected-input fingerprint 기록
 - `stop`: current evidence를 다시 확인하고 아래 다섯 상태 계산
 
 | state | 의미 |
@@ -70,7 +74,7 @@ acceptance, unknowns, decisions, handoff만 유지한다. Command verifier는 sh
 | `STOP_SUCCESS` | 모든 acceptance의 current evidence가 통과하고 critical unknown 없음 |
 | `STOP_BUDGET` | 명시된 iteration/deadline 도달 |
 | `STOP_SAFETY` | 권한·data-loss·destructive·security 경계 |
-| `STALE_INPUT` | contract/verifier/artifact가 evidence와 불일치 |
+| `STALE_INPUT` | contract/workspace/input/verifier/artifact가 evidence와 불일치 |
 | `CONTINUE` | 검증 가능한 다음 slice가 남음 |
 
 위험한 unknown 때문에 다음 행동을 할 수 없으면 `authority.blocked=true`로

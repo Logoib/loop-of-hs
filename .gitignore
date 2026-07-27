@@ -1,4 +1,7 @@
 .loop/
 .claude/skills/loop-code/
+.env
+.env.*
+!.env.example
 __pycache__/
 *.pyc

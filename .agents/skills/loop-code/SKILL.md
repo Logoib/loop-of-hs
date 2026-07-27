@@ -26,7 +26,8 @@ For Loop, create
 `.loop/<yyyyMMdd-HHmmss>-<short-slug>/loop-ledger.json` from
 `assets/loop-ledger.template.json`; append `-2`, `-3`, and so on for collisions.
 Fill objective, `baseline.workspace`, scope, authority, at least one acceptance
-criterion, and an iteration or deadline limit. Add rollback when persisted or
+criterion, the exact verifier inputs in `baseline.protected_inputs`, and at
+least one non-null iteration or deadline limit. Add rollback when persisted or
 external state can change. Read `references/ledger-contract.md` when needed.
 
 Create the ledger without asking the user to write a full spec. Ask only for a
@@ -66,12 +67,25 @@ or separate KG-staleness state until a real run demonstrates the need.
 Build the smallest plan that closes acceptance criteria. Use a fresh-context
 premortem only for irreversible or persisted changes, shared migrations,
 NX/Flomaster writes, units/coordinate/material semantics, unclear rollback, or
-plausible silent corruption. Hide the preferred plan during the blind pass.
-Convert surviving findings into unknowns or acceptance criteria.
+plausible silent corruption. Freeze one bounded task packet, then use fresh,
+read-only roles in two waves:
+
+- Thesis proposes the minimal safe plan and its invariants.
+- Anti-thesis receives the same packet, but not the preferred plan or its
+  reasoning, and lists failure cases plus falsification probes.
+- Synthesis runs after both, compares their outputs against the contract and
+  verifiers, then accepts, rejects with evidence, or converts each finding into
+  an unknown or acceptance criterion.
+
+Keep the coordinator as the only ledger writer.
 
 Do not repeat premortem every round. Repeat it only after a material plan or
 contract change, or when a failed approach requires a genuinely different plan.
-Use `/codex:adversarial-review` only after an artifact exists.
+After a candidate artifact exists, use one authorized cross-provider review:
+invoke `$claude-adversarial-review` from Codex or
+`/codex:adversarial-review` from Claude Code. Confirm explicit user
+authorization before sending repository content to the other provider or
+consuming its plan usage.
 
 ## 4. Execute a bounded slice
 
@@ -93,6 +107,12 @@ and make the smallest diff that satisfies the contract. Ponytail may simplify
 this skill during maintenance, but must not reduce runtime discovery, safety,
 verification, or explicit requirements.
 
+Classify a failed attempt before retrying: stale contract/input, deterministic
+verifier failure, or transient infrastructure failure. Refresh stale state,
+change the implementation for deterministic failures, and retry only a bounded
+transient operation. Never use blind retries to turn an invalid result into a
+pass.
+
 ## 5. Produce evidence
 
 Resolve the installed skill root and define command verification as an argv
@@ -103,9 +123,18 @@ python <skill-root>/scripts/loopctl.py run <ledger> --acceptance <AC-ID>
 ```
 
 The runner records exit code, bounded output, output hashes, artifact hashes,
-and contract hash, then atomically updates the ledger. Use a human verifier only
-when no safe command, file, API, or test can observe the result; only the user
-may set `user_accepted: true`.
+contract hash, workspace, and protected-input fingerprint, then atomically
+updates the ledger. Lint and static typing check source-level rules; they do not
+validate runtime JSON or workflow state. The controller validates ledger shape
+and state invariants, while each verifier validates the produced result. Keep
+state-changing side effects behind those gates.
+
+Use a human verifier only when no safe command, file, API, or test can observe
+the result; only the user may set `user_accepted: true`. If protected inputs or
+reviewed artifacts exist, capture one fingerprint over their union after the
+review, save it, and record its ledger-relative path as
+`fingerprint_snapshot`. A later file, contract, or workspace change makes that
+acceptance stale.
 
 For NX/Flomaster work, include applicable version, input/output identity, units,
 coordinate or material semantics, external process result, and source recovery.
@@ -152,8 +181,9 @@ still classifies semantic facts and must invoke them. The self-test validates th
 controller, not workflow usefulness. Do not add hooks, states, or new framework
 layers until a real Vue/NX/Flomaster run exposes a repeated failure.
 
-Command-evidence freshness currently covers the contract, verifier definition,
-and declared artifact hashes. `stop` does not rerun the verifier or hash
-undeclared source files. After a merge, rebase, or relevant source/test change,
-rerun acceptance immediately before `stop` until scoped fingerprints are wired
-into the stop gate.
+Command-evidence freshness covers the contract (including workspace), verifier
+definition, `baseline.protected_inputs`, and declared artifacts. Human evidence
+gets the same file freshness only when its fingerprint snapshot is recorded.
+`stop` does not rerun a verifier, observe live external application state, or
+hash undeclared inputs. Declare every exact relevant source/test/config input
+and rerun acceptance after changes that its evidence cannot observe.

@@ -17,6 +17,12 @@ Read this only after triage selects Loop.
   a quality cliff. Resume from the ledger after compaction.
 - Use fresh subagents for noisy exploration or independent review and Git
   worktrees only for concurrent writers.
+- For a high-risk premortem, run fresh read-only Thesis and Anti-thesis roles
+  independently from the same frozen task packet, then pass both outputs to a
+  fresh Synthesis role. Keep the preferred plan out of Anti-thesis context.
+- After a candidate artifact exists and the user authorizes cross-provider
+  review, invoke `$claude-adversarial-review`. It uses the authenticated
+  Claude subscription and consumes Claude plan usage.
 
 Do not add custom agent profiles merely to encode the role table. Add them after
 a real run shows that prompt routing or inheritance is insufficient.
@@ -28,9 +34,12 @@ a real run shows that prompt routing or inheritance is insufficient.
   current Sonnet for bounded implementation or research when available.
 - Use `/goal` for serial convergence. Use dynamic workflows or `ultracode` only
   for substantive repeatable fan-out or pipelines.
-- Use a named fresh subagent, new non-resumed session, or skill `context: fork`
-  for blind premortem. Do not use a parent-history `/subtask` fork.
-- Use `/codex:adversarial-review` only after a candidate artifact exists.
+- For a high-risk premortem, run fresh read-only Thesis and Anti-thesis roles
+  independently from the same frozen task packet, then pass both outputs to a
+  fresh Synthesis role. Use named fresh subagents, new non-resumed sessions, or
+  skill `context: fork`; do not use a parent-history `/subtask` fork.
+- After a candidate artifact exists and the user authorizes cross-provider
+  review, invoke `/codex:adversarial-review`.
 
 ## Fallback
 

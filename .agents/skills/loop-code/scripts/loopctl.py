@@ -52,6 +52,140 @@ def digest(value: object) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def require_string(value: object, label: str, *, allow_empty: bool = False) -> str:
+    if not isinstance(value, str) or (not allow_empty and not value.strip()):
+        suffix = " with content" if not allow_empty else ""
+        raise ValueError(f"{label} must be a string{suffix}")
+    return value
+
+
+def require_string_list(value: object, label: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise ValueError(f"{label} must be a string array")
+    return value
+
+
+def parse_deadline(value: object) -> datetime | None:
+    if value is None:
+        return None
+    require_string(value, "limits.deadline")
+    try:
+        deadline = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("limits.deadline must be an ISO-8601 datetime") from error
+    return deadline.replace(tzinfo=timezone.utc) if deadline.tzinfo is None else deadline.astimezone(timezone.utc)
+
+
+def validate_ledger(ledger: dict) -> None:
+    if ledger.get("schema_version") != 3:
+        raise ValueError("schema_version must be 3")
+    require_string(ledger.get("task_id"), "task_id")
+    require_string(ledger.get("objective"), "objective")
+
+    scope = ledger.get("scope")
+    if not isinstance(scope, dict):
+        raise ValueError("scope must be an object")
+    for key in ("in", "out", "interfaces"):
+        require_string_list(scope.get(key), f"scope.{key}")
+
+    baseline = ledger.get("baseline")
+    if not isinstance(baseline, dict):
+        raise ValueError("baseline must be an object")
+    require_string(baseline.get("workspace"), "baseline.workspace")
+    if baseline.get("revision") is not None:
+        require_string(baseline["revision"], "baseline.revision")
+    if not isinstance(baseline.get("environment"), dict):
+        raise ValueError("baseline.environment must be an object")
+    require_string_list(baseline.get("protected_inputs"), "baseline.protected_inputs")
+    require_string(baseline.get("rollback"), "baseline.rollback", allow_empty=True)
+
+    authority = ledger.get("authority")
+    if not isinstance(authority, dict) or not isinstance(authority.get("blocked"), bool):
+        raise ValueError("authority.blocked must be boolean")
+    for key in ("allowed_writes", "forbidden_actions", "requires_user_approval"):
+        if key in authority:
+            require_string_list(authority[key], f"authority.{key}")
+
+    limits = ledger.get("limits")
+    if not isinstance(limits, dict) or "max_iterations" not in limits or "deadline" not in limits:
+        raise ValueError("limits must contain max_iterations and deadline")
+    maximum = limits["max_iterations"]
+    if maximum is not None and (isinstance(maximum, bool) or not isinstance(maximum, int) or maximum <= 0):
+        raise ValueError("limits.max_iterations must be null or a positive integer")
+    parse_deadline(limits["deadline"])
+    if maximum is None and limits["deadline"] is None:
+        raise ValueError("at least one iteration or deadline limit is required")
+
+    progress = ledger.get("progress")
+    iteration = progress.get("iteration") if isinstance(progress, dict) else None
+    if isinstance(iteration, bool) or not isinstance(iteration, int) or iteration < 0:
+        raise ValueError("progress.iteration must be a non-negative integer")
+
+    control = ledger.get("control")
+    if not isinstance(control, dict):
+        raise ValueError("control must be an object")
+    for key in ("safety_stop", "budget_exhausted"):
+        if not isinstance(control.get(key), bool):
+            raise ValueError(f"control.{key} must be boolean")
+
+    acceptance = ledger.get("acceptance")
+    if not isinstance(acceptance, list) or not acceptance:
+        raise ValueError("acceptance must be a non-empty array")
+    acceptance_ids = set()
+    for index, item in enumerate(acceptance):
+        label = f"acceptance[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} must be an object")
+        acceptance_id = require_string(item.get("id"), f"{label}.id")
+        if acceptance_id in acceptance_ids:
+            raise ValueError(f"acceptance id must be unique: {acceptance_id}")
+        acceptance_ids.add(acceptance_id)
+        require_string(item.get("criterion"), f"{label}.criterion")
+        require_string_list(item.get("artifacts"), f"{label}.artifacts")
+        if item.get("status") not in {"open", "passed", "failed"}:
+            raise ValueError(f"{label}.status must be open, passed, or failed")
+        if "evidence_files" in item:
+            require_string_list(item["evidence_files"], f"{label}.evidence_files")
+        verifier = item.get("verifier")
+        if not isinstance(verifier, dict) or verifier.get("type") not in {"command", "human"}:
+            raise ValueError(f"{label}.verifier.type must be command or human")
+        if verifier["type"] == "command":
+            require_string_list(verifier.get("argv"), f"{label}.verifier.argv")
+            require_string(verifier.get("cwd", "."), f"{label}.verifier.cwd")
+            timeout = verifier.get("timeout_seconds", 300)
+            if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+                raise ValueError(f"{label}.verifier.timeout_seconds must be a positive integer")
+            expected_exit = verifier.get("expected_exit_code", 0)
+            if isinstance(expected_exit, bool) or not isinstance(expected_exit, int):
+                raise ValueError(f"{label}.verifier.expected_exit_code must be an integer")
+        else:
+            require_string(verifier.get("instructions"), f"{label}.verifier.instructions")
+            if not isinstance(item.get("user_accepted"), bool):
+                raise ValueError(f"{label}.user_accepted must be boolean")
+            require_string(item.get("human_evidence"), f"{label}.human_evidence", allow_empty=True)
+            if "fingerprint_snapshot" in item:
+                require_string(item["fingerprint_snapshot"], f"{label}.fingerprint_snapshot")
+
+    unknowns = ledger.get("unknowns")
+    if not isinstance(unknowns, list):
+        raise ValueError("unknowns must be an array")
+    unknown_ids = set()
+    for index, item in enumerate(unknowns):
+        label = f"unknowns[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} must be an object")
+        unknown_id = require_string(item.get("id"), f"{label}.id")
+        if unknown_id in unknown_ids:
+            raise ValueError(f"unknown id must be unique: {unknown_id}")
+        unknown_ids.add(unknown_id)
+        status = item.get("status", "open")
+        if item.get("impact") == "critical" and status in {"verified", "falsified", "resolved"}:
+            if not isinstance(item.get("evidence"), list) or not item["evidence"]:
+                raise ValueError(f"{label} requires evidence before closing")
+        if item.get("impact") == "critical" and status == "accepted-risk" and item.get("user_accepted") is not True:
+            raise ValueError(f"{label} accepted-risk requires user_accepted")
+
+
 def contract_view(ledger: dict) -> dict:
     acceptance = []
     for item in ledger.get("acceptance", []):
@@ -60,7 +194,13 @@ def contract_view(ledger: dict) -> dict:
                 {
                     key: value
                     for key, value in item.items()
-                    if key not in {"status", "evidence_files", "user_accepted", "human_evidence"}
+                    if key not in {
+                        "status",
+                        "evidence_files",
+                        "user_accepted",
+                        "human_evidence",
+                        "fingerprint_snapshot",
+                    }
                 }
             )
         else:
@@ -73,7 +213,7 @@ def contract_view(ledger: dict) -> dict:
         "scope": ledger.get("scope"),
         "baseline": {
             key: baseline.get(key)
-            for key in ("revision", "environment", "protected_inputs", "rollback")
+            for key in ("workspace", "revision", "environment", "protected_inputs", "rollback")
         },
         "authority": {key: value for key, value in authority.items() if key != "blocked"},
         "limits": ledger.get("limits"),
@@ -123,6 +263,7 @@ def capture_fingerprint(ledger_path: Path, workspace: Path, scope: list[str], pi
     workspace = workspace.resolve()
     ledger_path = resolve_from(workspace, str(ledger_path))
     ledger = read_json(ledger_path)
+    validate_ledger(ledger)
     hashes = {}
     for value in scope:
         path = resolve_from(workspace, value)
@@ -140,6 +281,8 @@ def capture_fingerprint(ledger_path: Path, workspace: Path, scope: list[str], pi
 
 
 def verify_fingerprint(ledger_path: Path, workspace: Path, expected: dict) -> list[str]:
+    if not isinstance(expected.get("scope_sha256"), dict):
+        raise ValueError("fingerprint scope_sha256 must be an object")
     current = capture_fingerprint(
         ledger_path,
         workspace,
@@ -148,7 +291,7 @@ def verify_fingerprint(ledger_path: Path, workspace: Path, expected: dict) -> li
     )
     return [
         key
-        for key in ("base_revision", "contract_sha256", "scope_sha256")
+        for key in ("workspace", "base_revision", "contract_sha256", "scope_sha256")
         if current.get(key) != expected.get(key)
     ]
 
@@ -188,6 +331,7 @@ def bounded_tail(value: bytes | str | None, limit: int = 2000) -> str:
 def run_acceptance(ledger_path: Path, acceptance_id: str, output: Path | None = None) -> tuple[bool, Path]:
     ledger_path = ledger_path.resolve()
     ledger = read_json(ledger_path)
+    validate_ledger(ledger)
     acceptance = find_acceptance(ledger, acceptance_id)
     verifier = verifier_view(acceptance)
     if verifier["type"] != "command":
@@ -208,6 +352,12 @@ def run_acceptance(ledger_path: Path, acceptance_id: str, output: Path | None = 
     if not cwd.is_dir():
         raise ValueError(f"verifier.cwd does not exist: {cwd}")
 
+    input_fingerprint = capture_fingerprint(
+        ledger_path,
+        workspace,
+        ledger["baseline"]["protected_inputs"],
+        False,
+    )
     started = datetime.now(timezone.utc)
     timed_out = False
     try:
@@ -227,9 +377,10 @@ def run_acceptance(ledger_path: Path, acceptance_id: str, output: Path | None = 
     )
 
     evidence = {
-        "schema_version": 1,
+        "schema_version": 2,
         "acceptance_id": acceptance_id,
         "contract_sha256": digest(contract_view(ledger)),
+        "input_fingerprint": input_fingerprint,
         "verifier": verifier,
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
@@ -271,15 +422,51 @@ def command_evidence_state(ledger: dict, ledger_path: Path, acceptance: dict) ->
             evidence = read_json(path)
         except (OSError, ValueError, json.JSONDecodeError):
             continue
+        fingerprint = evidence.get("input_fingerprint")
+        try:
+            fingerprint_is_current = isinstance(fingerprint, dict) and not verify_fingerprint(
+                ledger_path, workspace, fingerprint
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            fingerprint_is_current = False
         if (
             evidence.get("acceptance_id") == acceptance.get("id")
             and evidence.get("passed") is True
             and evidence.get("contract_sha256") == expected_contract
             and evidence.get("verifier") == expected_verifier
             and evidence.get("artifacts_sha256") == current_artifacts
+            and fingerprint_is_current
         ):
             return "passed"
     return "stale"
+
+
+def human_evidence_state(ledger: dict, ledger_path: Path, acceptance: dict) -> str:
+    if (
+        acceptance.get("status") != "passed"
+        or acceptance.get("user_accepted") is not True
+        or not acceptance.get("human_evidence")
+    ):
+        return "open"
+    workspace = workspace_for(ledger, ledger_path.parent)
+    required = ledger["baseline"]["protected_inputs"] + acceptance.get("artifacts", [])
+    if not required:
+        return "passed"
+    snapshot_value = acceptance.get("fingerprint_snapshot")
+    if not snapshot_value:
+        return "stale"
+    try:
+        snapshot = read_json(resolve_from(ledger_path.parent, snapshot_value))
+        expected_paths = {
+            display_path(workspace, resolve_from(workspace, value))
+            for value in required
+        }
+        captured_paths = snapshot.get("scope_sha256", {})
+        if not isinstance(captured_paths, dict) or not expected_paths.issubset(captured_paths):
+            return "stale"
+        return "stale" if verify_fingerprint(ledger_path, workspace, snapshot) else "passed"
+    except (OSError, ValueError, json.JSONDecodeError):
+        return "stale"
 
 
 def acceptance_state(ledger: dict, ledger_path: Path, acceptance: object) -> str:
@@ -289,13 +476,7 @@ def acceptance_state(ledger: dict, ledger_path: Path, acceptance: object) -> str
     if verifier_type == "command":
         return command_evidence_state(ledger, ledger_path, acceptance)
     if verifier_type == "human":
-        if (
-            acceptance.get("status") == "passed"
-            and acceptance.get("user_accepted") is True
-            and bool(acceptance.get("human_evidence"))
-        ):
-            return "passed"
-        return "open"
+        return human_evidence_state(ledger, ledger_path, acceptance)
     return "open"
 
 
@@ -304,20 +485,17 @@ def is_open_critical(unknown: object) -> bool:
         return False
     status = unknown.get("status", "open")
     if status in {"verified", "falsified", "resolved"}:
-        return False
+        return not (isinstance(unknown.get("evidence"), list) and bool(unknown["evidence"]))
     return not (status == "accepted-risk" and unknown.get("user_accepted") is True)
 
 
 def deadline_reached(value: object, now: datetime) -> bool:
-    if not value:
-        return False
-    deadline = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    if deadline.tzinfo is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
-    return now >= deadline.astimezone(timezone.utc)
+    deadline = parse_deadline(value)
+    return deadline is not None and now >= deadline
 
 
 def stop_state(ledger: dict, ledger_path: Path, now: datetime | None = None) -> str:
+    validate_ledger(ledger)
     control = ledger.get("control", {})
     authority = ledger.get("authority", {})
     if control.get("safety_stop") is True or authority.get("blocked") is True:
@@ -396,6 +574,97 @@ def self_test() -> None:
         ledger["progress"]["iteration"] = 2
         write_json(ledger_path, ledger)
         assert stop_state(read_json(ledger_path), ledger_path) == "CONTINUE"
+
+        source = root / "source.txt"
+        source.write_text("before", encoding="utf-8")
+        ledger["baseline"]["protected_inputs"] = ["source.txt"]
+        ledger["acceptance"][0].update({
+            "verifier": {
+                "type": "command",
+                "argv": [sys.executable, "-c", "pass"],
+                "cwd": ".",
+                "timeout_seconds": 30,
+                "expected_exit_code": 0,
+            },
+            "artifacts": [],
+            "status": "open",
+            "evidence_files": [],
+        })
+        write_json(ledger_path, ledger)
+        assert run_acceptance(ledger_path, "AC-1")[0]
+        source.write_text("after", encoding="utf-8")
+        assert stop_state(read_json(ledger_path), ledger_path) == "STALE_INPUT"
+
+        source.write_text("current", encoding="utf-8")
+        ledger = read_json(ledger_path)
+        ledger["acceptance"][0].update({"status": "open", "evidence_files": []})
+        write_json(ledger_path, ledger)
+        assert run_acceptance(ledger_path, "AC-1")[0]
+        ledger = read_json(ledger_path)
+        other_workspace = root / "other"
+        other_workspace.mkdir()
+        ledger["baseline"]["workspace"] = str(other_workspace)
+        write_json(ledger_path, ledger)
+        assert stop_state(read_json(ledger_path), ledger_path) == "STALE_INPUT"
+
+        ledger["baseline"]["workspace"] = str(root)
+        ledger["unknowns"] = [{
+            "id": "KU-1",
+            "impact": "critical",
+            "status": "resolved",
+            "evidence": [],
+        }]
+        write_json(ledger_path, ledger)
+        try:
+            stop_state(read_json(ledger_path), ledger_path)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("critical unknown closed without evidence")
+
+        ledger["unknowns"] = []
+        ledger["objective"] = ""
+        write_json(ledger_path, ledger)
+        try:
+            stop_state(read_json(ledger_path), ledger_path)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("blank objective accepted")
+
+        ledger["objective"] = "review verified output"
+        ledger["limits"] = {"max_iterations": None, "deadline": None}
+        write_json(ledger_path, ledger)
+        try:
+            stop_state(read_json(ledger_path), ledger_path)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unbounded ledger accepted")
+
+        reviewed = root / "review.txt"
+        reviewed.write_text("approved", encoding="utf-8")
+        snapshot_path = root / "human-fingerprint.json"
+        ledger["limits"] = {"max_iterations": 3, "deadline": None}
+        ledger["acceptance"] = [{
+            "id": "AC-H",
+            "criterion": "user approves reviewed output",
+            "verifier": {
+                "type": "human",
+                "instructions": "Inspect source.txt and review.txt",
+            },
+            "artifacts": ["review.txt"],
+            "status": "passed",
+            "user_accepted": True,
+            "human_evidence": "User approved the reviewed files.",
+            "fingerprint_snapshot": "human-fingerprint.json",
+        }]
+        write_json(ledger_path, ledger)
+        snapshot = capture_fingerprint(ledger_path, root, ["source.txt", "review.txt"], False)
+        write_json(snapshot_path, snapshot)
+        assert stop_state(read_json(ledger_path), ledger_path) == "STOP_SUCCESS"
+        reviewed.write_text("changed", encoding="utf-8")
+        assert stop_state(read_json(ledger_path), ledger_path) == "STALE_INPUT"
 
     print("SELF_TEST_OK")
 

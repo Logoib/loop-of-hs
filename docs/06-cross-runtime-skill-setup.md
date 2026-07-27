@@ -1,7 +1,8 @@
 # Claude·Codex 공용 `loop-code` 구성
 
 - canonical source: `.agents/skills/loop-code`
-- Claude discovery: `.claude/skills/loop-code` junction
+- Claude discovery: project `.claude/skills/loop-code` and user `~/.claude/skills/loop-code` junctions
+- Codex discovery: repository `.agents/skills/loop-code` and user `~/.codex/skills/loop-code` junction
 - local Claude version: `2.1.216`
 - local Codex version: `0.144.6`
 
@@ -24,12 +25,10 @@
 
 | Runtime | repository discovery | user-global install | 확인 수준 |
 |---|---|---|---|
-| Codex | `.agents/skills/loop-code` | 없음 | 현재 Codex session의 available skill로 노출 |
-| Claude Code | `.claude/skills/loop-code` junction | 없음 | `/loop-code` read-only smoke test 통과 |
+| Codex | `.agents/skills/loop-code` | `~/.codex/skills/loop-code` junction | repository discovery 확인, global discovery는 다음 session에서 확인 |
+| Claude Code | `.claude/skills/loop-code` junction | `~/.claude/skills/loop-code` junction | repository `/loop-code` smoke test 통과, global discovery는 다음 session에서 확인 |
 
-두 경로의 `SKILL.md` SHA-256은 같았다. `loop-code`는 아직 P0 실사용 전이므로
-모든 repository에 영향을 주는 global junction은 만들지 않는다. 반복 사용 가치가
-확인되기 전까지 repository-scoped skill로 유지한다.
+project/global 경로는 모두 canonical source를 가리키므로 `SKILL.md` SHA-256이 같다.
 
 Windows junction은 clone 또는 workspace 이동 뒤 project root에서 재생성한다.
 
@@ -37,6 +36,17 @@ Windows junction은 clone 또는 workspace 이동 뒤 project root에서 재생�
 New-Item -ItemType Directory -Force -Path '.claude\skills' | Out-Null
 New-Item -ItemType Junction `
   -Path '.claude\skills\loop-code' `
+  -Target (Resolve-Path '.agents\skills\loop-code')
+```
+
+User-global junction도 같은 canonical source를 가리킨다.
+
+```powershell
+New-Item -ItemType Junction `
+  -Path "$HOME\.claude\skills\loop-code" `
+  -Target (Resolve-Path '.agents\skills\loop-code')
+New-Item -ItemType Junction `
+  -Path "$HOME\.codex\skills\loop-code" `
   -Target (Resolve-Path '.agents\skills\loop-code')
 ```
 
@@ -64,8 +74,8 @@ model_auto_compact_token_limit_scope = "total"
 ```
 
 위 다섯 값은 2026-07-21 실제 user-global config에서 다시 확인했다. Claude Code의
-user-global 설정은 `effortLevel: "xhigh"`였으며, `loop-code` 자체는 양쪽 runtime
-모두 global skill로 설치되어 있지 않다.
+user-global 설정은 `effortLevel: "xhigh"`였으며, `loop-code`는 양쪽 runtime에
+user-global junction으로 설치되어 있다.
 
 150K는 universal quality cliff가 아니라 사용자 선택 checkpoint/compaction
 정책이다. 변경은 새 Codex session부터 확인한다. Current catalog와 `/status` 또는

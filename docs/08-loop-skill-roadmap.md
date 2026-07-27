@@ -3,18 +3,20 @@
 `loop-code`에서 실제 공통점이 확인되기 전에는 별도 `loop-core` abstraction을 만들지
 않는다. 새 framework 기능이나 후속 skill보다 실제 UAT를 먼저 수행한다.
 
-## 2026-07-21 critical review 반영
+## 2026-07-21 critical review 및 2026-07-27 수정
 
 실제 재현으로 확인한 최우선 결함은 artifact 없는 command acceptance가 통과한 뒤
 `scope.in` source가 바뀌어도 `stop`이 `STOP_SUCCESS`를 반환하는 것이다. 기존
 self-test는 declared artifact drift만 검사한다.
 
-P0 전에 다음 최소 수정만 한다.
+다음 최소 수정은 2026-07-27에 controller와 self-test에 반영했다.
 
-1. command evidence에 exact scoped-file fingerprint를 연결하고 `stop`에서 재검증한다.
-2. source drift 재현을 controller self-test에 추가한다.
-3. critical unknown의 `verified`/`resolved`에는 non-empty evidence를 요구한다.
-4. 현재 여러 문서에 반복된 stop-state 설명은 code와 `SKILL.md`를 정본으로 접는다.
+1. command evidence에 `baseline.protected_inputs` fingerprint를 연결하고 `stop`에서 재검증한다.
+2. source와 workspace drift 재현을 controller self-test에 추가한다.
+3. critical unknown의 closed status에는 non-empty evidence를 요구한다.
+4. ledger runtime/semantic validation과 최소 하나의 finite limit을 강제한다.
+5. human acceptance의 declared artifact/input fingerprint를 검증한다.
+6. stop-state 계약은 code와 `SKILL.md`를 정본으로 둔다.
 
 지금 추가하지 않는 것은 triage 점수/verifier, ledger lock, user-acceptance 서명 체계,
 추가 state와 framework layer다. Ledger writer는 coordinator 하나로 유지하고
@@ -93,6 +95,7 @@ NX/Flomaster 실사용 2–3건에서 다음 계약이 반복될 때만 만든�
 ## 권장 구현 순서
 
 - [x] `loop-code` controller 최소 구현
+- [x] controller P0 freshness·ledger validation 보강
 - [ ] Vue real-task UAT 1건
 - [ ] NX/Flomaster real-task UAT 1–2건
 - [ ] `loop-search`
