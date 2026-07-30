@@ -29,10 +29,13 @@ verifier에 대조한다. 살아남은 finding만 unknown 또는 acceptance crit
 흡수한다. Candidate artifact 이후에는 Codex에서 `$claude-adversarial-review`,
 Claude Code에서 `/codex:adversarial-review`로 한 차례 교차 검토한다.
 
-Codex의 한 줄 시작 예시는 다음과 같다.
+Codex와 Claude Code 모두 skill을 직접 호출하면 host goal이 자동 활성화된다.
+Codex는 runtime goal tool을 사용하고, Claude Code는 `/goal`과 같은 prompt-based
+`Stop` hook을 skill lifecycle에 설치한다.
 
 ```text
-/goal Use $loop-code to achieve: <목표>
+Codex:      $loop-code <목표>
+Claude Code: /loop-code <목표>
 ```
 
 ## 2. 최소 제어면

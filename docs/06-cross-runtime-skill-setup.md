@@ -83,17 +83,16 @@ session log가 config 주장보다 우선한다.
 
 ## 호출과 routing
 
-Codex persistent run:
+두 runtime 모두 skill 직접 호출이 host goal을 자동 활성화한다.
 
 ```text
-/goal Use $loop-code to achieve: <한 줄 목표>
+Codex:       $loop-code <한 줄 목표>
+Claude Code: /loop-code <한 줄 목표>
 ```
 
-Claude Code:
-
-```text
-/loop-code <한 줄 목표>
-```
+Codex는 현재 session의 goal tool을 호출한다. Claude Code는 skill-scoped prompt
+`Stop` hook을 사용한다. 이 hook은 Claude Code `/goal`의 공식 기반 메커니즘과
+같으며, skill prompt 안에서 slash command를 중첩 실행하지 않는다.
 
 권장 역할은 coordinator/plan/premortem/final review에 Sol `xhigh`, 어려운 구현에
 Sol `high`, read-heavy worker에 Terra `xhigh`다. `ultra`는 기본 사용하지 않는다.

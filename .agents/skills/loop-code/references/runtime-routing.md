@@ -4,8 +4,11 @@ Read this only after triage selects Loop.
 
 ## Codex
 
-- Start persistent work explicitly with
-  `/goal Use $loop-code to achieve: <one-line objective>`.
+- On explicit `$loop-code` invocation, use the runtime goal tools as specified
+  in `SKILL.md`; the user should not need to prefix the request with `/goal`.
+- If goal tools are unavailable in an older client, fall back to
+  `/goal Use $loop-code to achieve: <one-line objective>` and report the
+  fallback.
 - Prefer GPT-5.6 Sol `xhigh` for coordination, planning, premortem, and final
   review; Sol `high` for difficult implementation; Terra `xhigh` for bounded
   read-heavy exploration when the runtime can route workers independently.
@@ -29,11 +32,14 @@ a real run shows that prompt routing or inheritance is insufficient.
 
 ## Claude Code
 
+- The `SKILL.md` frontmatter installs a skill-scoped prompt `Stop` hook, the
+  supported automatic equivalent of Claude Code's session-scoped `/goal`
+  shortcut. Do not try to nest `/goal` inside the expanded skill prompt.
 - Verify account availability before pinning models.
 - Prefer Fable 5 for coordination, current Opus for difficult reasoning, and
   current Sonnet for bounded implementation or research when available.
-- Use `/goal` for serial convergence. Use dynamic workflows or `ultracode` only
-  for substantive repeatable fan-out or pipelines.
+- Use the scoped goal hook for serial convergence. Use dynamic workflows or
+  `ultracode` only for substantive repeatable fan-out or pipelines.
 - For a high-risk premortem, run fresh read-only Thesis and Anti-thesis roles
   independently from the same frozen task packet, then pass both outputs to a
   fresh Synthesis role. Use named fresh subagents, new non-resumed sessions, or

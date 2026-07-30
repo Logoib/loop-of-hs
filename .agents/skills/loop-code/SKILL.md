@@ -1,12 +1,44 @@
 ---
 name: loop-code
-description: Triage and execute complex code changes through a small ledger-driven loop with command evidence, stale-input fingerprints, and just-in-time lookup of shared department knowledge. Use for cross-component or multi-session changes, migrations, shared interfaces, large web applications, external NX or Flomaster integrations, or code changes with rollback or silent-corruption risk. Do not use for research-only work, report generation, or a clearly one-step edit.
+description: Triage and execute complex code changes through a small ledger-driven loop with command evidence, stale-input fingerprints, and just-in-time lookup of shared department knowledge. Explicit invocation starts the host's persistent goal mechanism. Use for cross-component or multi-session changes, migrations, shared interfaces, large web applications, external NX or Flomaster integrations, or code changes with rollback or silent-corruption risk. Do not use for research-only work, report generation, or a clearly one-step edit.
+hooks:
+  Stop:
+    - hooks:
+        - type: prompt
+          continueOnBlock: true
+          prompt: >-
+            The loop-code workflow is active. Inspect the Stop hook input,
+            especially last_assistant_message. Return {"ok": true} only when
+            the user's current objective and every stated acceptance criterion
+            are demonstrably complete, or when a declared safety or budget
+            boundary requires a clearly reported stop. Otherwise return
+            {"ok": false, "reason": "<the next missing evidence or action>"}.
+            Hook input: $ARGUMENTS
 ---
 
 # Loop Code
 
 Start from the user's goal, not a requested specification ceremony. Treat the
 ledger as durable state and each session as replaceable working memory.
+
+## 0. Start the host goal
+
+When the user explicitly invokes this skill, enable the host's persistent goal
+mechanism before triage.
+
+- **Codex**: call `get_goal`. Reuse a matching active goal; if none is active,
+  call `create_goal` with the user's requested outcome and completion condition.
+  Do not merely print `/goal` or run a nested Codex CLI. At a true terminal
+  state, call `update_goal` with `complete` or, only under that tool's repeated
+  blocker rule, `blocked`.
+- **Claude Code**: the skill-scoped `Stop` prompt hook in this file is the
+  supported automatic equivalent of `/goal`; it evaluates completion and
+  continues the same turn when evidence is missing. Do not try to invoke a
+  nested slash command.
+
+If the host lacks its goal facility or policy disables hooks, report that once
+and continue with the bounded ledger loop. Goal activation never expands tool
+authority, permissions, or safety boundaries.
 
 ## 1. Triage the goal
 
