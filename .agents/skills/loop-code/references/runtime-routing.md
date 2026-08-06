@@ -9,9 +9,16 @@ Read this only after triage selects Loop.
 - If goal tools are unavailable in an older client, fall back to
   `/goal Use $loop-code to achieve: <one-line objective>` and report the
   fallback.
-- Prefer GPT-5.6 Sol `xhigh` for coordination, planning, premortem, and final
-  review; Sol `high` for difficult implementation; Terra `xhigh` for bounded
-  read-heavy exploration when the runtime can route workers independently.
+- Prefer GPT-5.6 Sol `xhigh` for coordination, planning, premortem, synthesis,
+  and final review. Keep these roles on Sol unless repository-specific UAT
+  shows that a cheaper model preserves semantic and safety decisions.
+- Prefer Luna `max` for bounded implementation and read-heavy exploration when
+  acceptance criteria are clear and command-verifiable. Treat it as a
+  cost-optimized worker, not a low-token or low-latency worker.
+- Escalate to Sol `high` for difficult or ambiguous implementation, weak
+  verifiers, external or persisted state, or a deterministic Luna failure that
+  needs stronger reasoning. Preserve one independent Sol `xhigh` final gate;
+  do not route every role to Luna by default.
 - Keep `ultra` off by default. Enable it only when real UAT shows that `xhigh`
   plus the harness repeatedly misses a critical requirement.
 - Inspect the active client catalog and session budget. Do not infer Codex's
