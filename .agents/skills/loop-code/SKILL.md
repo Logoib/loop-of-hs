@@ -5,13 +5,14 @@ hooks:
   Stop:
     - hooks:
         - type: prompt
-          continueOnBlock: true
           prompt: >-
-            The loop-code workflow is active. Inspect the Stop hook input,
-            especially last_assistant_message. Return {"ok": true} only when
-            the user's current objective and every stated acceptance criterion
-            are demonstrably complete, or when a declared safety or budget
-            boundary requires a clearly reported stop. Otherwise return
+            The loop-code workflow is active. Inspect the Stop hook input.
+            If stop_hook_active is true, return {"ok": true} at once; the
+            block cap has been reached and control belongs to the user.
+            Otherwise read last_assistant_message and return {"ok": true}
+            only when the user's current objective and every stated acceptance
+            criterion are demonstrably complete, or when a declared safety or
+            budget boundary requires a clearly reported stop. Otherwise return
             {"ok": false, "reason": "<the next missing evidence or action>"}.
             Hook input: $ARGUMENTS
 ---
@@ -31,10 +32,48 @@ mechanism before triage.
   Do not merely print `/goal` or run a nested Codex CLI. At a true terminal
   state, call `update_goal` with `complete` or, only under that tool's repeated
   blocker rule, `blocked`.
-- **Claude Code**: the skill-scoped `Stop` prompt hook in this file is the
-  supported automatic equivalent of `/goal`; it evaluates completion and
-  continues the same turn when evidence is missing. Do not try to invoke a
-  nested slash command.
+- **Claude Code**: `/goal` is a built-in user command with no tool surface, so
+  the assistant cannot enable it. There is no settings key, environment
+  variable, CLI flag, or hook that sets a goal on the assistant's behalf; the
+  only non-interactive form is the user launching `claude -p "/goal <condition>"`.
+  Two mechanisms cover it instead.
+  - The `Stop` prompt hook in this file's frontmatter is the same machinery:
+    per the official docs, `/goal` is itself a wrapper around a session-scoped
+    prompt-based `Stop` hook. Claude Code registers a skill's frontmatter hooks
+    when the skill is invoked and keeps running them for the rest of the
+    session, including turns after the skill's own turn. That session scope is
+    deliberate here, because a Loop spans turns; `once: true` would disarm the
+    gate after one evaluation. Only subagent hooks are scoped to the
+    component's lifetime. The hook evaluates completion at `Stop` and continues
+    the same turn when evidence is missing. Do not try to invoke a nested slash
+    command.
+  - The hook is not a goal object. It creates no `◎ /goal active` indicator, no
+    `/goal` status readout, and no `--resume` restoration, so a session running
+    on the hook alone looks exactly like a session with nothing armed.
+  - When triage selects **Plan** or **Loop**, print exactly one ready-to-paste
+    line so the user can arm the built-in mechanism as well, then continue
+    without waiting for an answer:
+    `/goal <condition> — 또는 N턴 후 중단`
+    Say once why both exist: the Stop hook lives only as long as this session,
+    while a user-set `/goal` persists across turns, survives `--resume`, and is
+    what actually carries a multi-session Loop. Do not repeat this in later
+    turns.
+  - Write that condition for the evaluator that will read it. It is the small
+    fast model, it runs after every turn, and it judges **only what the
+    conversation already shows** — it does not run commands or read files. So
+    state the end state as something this session must print: name the command
+    and the observable result (`selftest.py 를 돌려 SELFTEST_PASS 를 출력`),
+    not an unobservable property (`코드가 정확함`). Include the constraints that
+    must not change on the way there, and a turn or time bound so the loop
+    cannot run forever. The condition may be up to 4,000 characters.
+  - Report status honestly. The assistant cannot read whether a goal is
+    active; only the user can, by running `/goal` with no arguments. Never
+    claim a goal is on. `/goal` is unavailable in an untrusted workspace, when
+    `disableAllHooks` is true, or when `allowManagedHooksOnly` is set — in
+    those cases the command says why, and the ledger loop carries the work
+    alone.
+
+  Source: <https://code.claude.com/docs/en/goal> (verified 2026-08-19).
 
 If the host lacks its goal facility or policy disables hooks, report that once
 and continue with the bounded ledger loop. Goal activation never expands tool
@@ -65,6 +104,12 @@ external state can change. Read `references/ledger-contract.md` when needed.
 Create the ledger without asking the user to write a full spec. Ask only for a
 decision-changing unknown that local code, tests, docs, tools, or a safe probe
 cannot resolve.
+
+For Loop only, the criteria the loop will spend its budget against are inferred,
+not agreed. Before the first mutation, print the drafted objective, acceptance
+criteria, and limits and confirm them in one question. One confirmation, not an
+interview phase; `user_accepted` at the final gate arrives too late to redirect
+the work.
 
 Keep parser keys/enums in English. Use free text in the language that makes the
 handoff most reliable; report progress to the user in Korean.
