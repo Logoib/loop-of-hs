@@ -374,6 +374,10 @@ def run_acceptance(ledger_path: Path, acceptance_id: str, output: Path | None = 
         not timed_out
         and exit_code == verifier["expected_exit_code"]
         and all(value is not None for value in artifacts.values())
+        # A declared protected input that no longer hashes is a missing input, not a pass.
+        # Without this the verifier stays green after an input is deleted, moved, or never
+        # checked out, and the evidence records null beside "passed".
+        and all(value is not None for value in input_fingerprint["scope_sha256"].values())
     )
 
     evidence = {
