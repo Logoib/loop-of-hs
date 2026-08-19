@@ -1,6 +1,6 @@
 ---
 name: loop-code
-description: Triage and execute complex code changes through a small ledger-driven loop with command evidence, stale-input fingerprints, and just-in-time lookup of shared department knowledge. Explicit invocation starts the host's persistent goal mechanism. Use for cross-component or multi-session changes, migrations, shared interfaces, large web applications, external NX or Flomaster integrations, or code changes with rollback or silent-corruption risk. Do not use for research-only work, report generation, or a clearly one-step edit.
+description: Triage and execute complex code changes through a small ledger-driven loop with command evidence, stale-input fingerprints, and just-in-time lookup of shared department knowledge. Explicit invocation arms a per-turn completion gate on hosts that provide one. Use for cross-component or multi-session changes, migrations, shared interfaces, large web applications, external NX or Flomaster integrations, or code changes with rollback or silent-corruption risk. Do not use for research-only work, report generation, or a clearly one-step edit.
 hooks:
   Stop:
     - hooks:
