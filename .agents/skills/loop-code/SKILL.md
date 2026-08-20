@@ -101,15 +101,22 @@ criterion, the exact verifier inputs in `baseline.protected_inputs`, and at
 least one non-null iteration or deadline limit. Add rollback when persisted or
 external state can change. Read `references/ledger-contract.md` when needed.
 
-Create the ledger without asking the user to write a full spec. Ask only for a
-decision-changing unknown that local code, tests, docs, tools, or a safe probe
-cannot resolve.
+Create the ledger without asking the user to write a full spec. Fill every field
+you can from code, tests, history, docs, and safe probes first, then ask only
+about what is left.
 
 For Loop only, the criteria the loop will spend its budget against are inferred,
-not agreed. Before the first mutation, print the drafted objective, acceptance
-criteria, and limits and confirm them in one question. One confirmation, not an
-interview phase; `user_accepted` at the final gate arrives too late to redirect
-the work.
+not agreed. Before the first mutation, print the drafted objective, scope in/out
+and interfaces, each acceptance criterion with its exact verifier command, and
+the limits. That draft is the blueprint the user reacts to; build no separate
+mockup. In the same round, ask what the repository could not answer — intent,
+priority, constraint, brownfield behavior — and name for each the ledger field
+the answer sets. Skip any question that sets no field. When approaches diverge in
+the shape of the diff, put the competing snippets in the question itself (Claude
+Code: the option `preview` field) so the user compares artifacts, not
+descriptions. The gate closes when scope, acceptance, and limits are settled,
+never on a self-assigned clarity score. One round, not an interview phase;
+`user_accepted` at the final gate arrives too late to redirect the work.
 
 Keep parser keys/enums in English. Use free text in the language that makes the
 handoff most reliable; report progress to the user in Korean.

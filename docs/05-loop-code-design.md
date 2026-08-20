@@ -14,12 +14,27 @@ goal
 → Direct / Plan / Loop triage
 → Loop이면 ledger 자동 생성
 → blocking unknown만 탐색
+→ Loop이면 blueprint 확인 게이트 1회
 → plan
 → 위험할 때만 fresh-context premortem
 → implement
 → command/human verification
 → five-state stop gate
 ```
+
+Blueprint 확인 게이트는 Loop에만 둔다. Coordinator가 repo, 테스트, 이력, 안전한 probe로
+ledger를 먼저 채운 뒤 objective, scope in/out/interfaces, verifier command가 붙은
+acceptance, limits를 한 번에 출력한다. 이 초안 자체가 사용자가 반응할 blueprint이고 별도
+mockup을 만들지 않는다. 같은 라운드에서 repo가 답하지 못한 것만 묻되 질문마다 그 답이
+확정하는 ledger 필드를 밝히고, 어떤 필드도 바꾸지 않는 질문은 생략한다. 접근법이 diff 모양
+수준에서 갈릴 때만 후보 코드 조각을 선택지에 붙여 비교하게 한다. 게이트는 scope, acceptance,
+limits가 확정되면 닫히고 LLM 자기채점 clarity 점수는 쓰지 않는다([02 결론 2](./02-loop-landscape-comparison.md)).
+
+질문 기준의 출처는 Anthropic best-practices의 "Let Claude interview you"다. 자족적 spec은
+관련 파일과 인터페이스를 지목하고, 범위 밖을 명시하고, 동작을 증명하는 end-to-end 검증으로
+끝나야 한다고 본다. 셋은 각각 `scope.in`/`scope.interfaces`, `scope.out`, acceptance verifier에
+대응하므로 별도 SPEC 문서를 만들지 않고 ledger가 그 역할을 한다.
+<https://code.claude.com/docs/en/best-practices> (확인: 2026-08-20)
 
 검증이 plan을 무효화했을 때만 재계획한다. Premortem은 매 반복이 아니라
 irreversible/persisted 변경, shared migration, NX/Flomaster write, 단위·좌표·물성,
