@@ -1,273 +1,156 @@
 ---
 name: loop-code
-description: Triage and execute complex code changes through a small ledger-driven loop with command evidence, stale-input fingerprints, and just-in-time lookup of shared department knowledge. Explicit invocation arms a per-turn completion gate on hosts that provide one. Use for cross-component or multi-session changes, migrations, shared interfaces, large web applications, external NX or Flomaster integrations, or code changes with rollback or silent-corruption risk. Do not use for research-only work, report generation, or a clearly one-step edit.
-hooks:
-  Stop:
-    - hooks:
-        - type: prompt
-          prompt: >-
-            The loop-code workflow is active. Inspect the Stop hook input.
-            If stop_hook_active is true, return {"ok": true} at once; the
-            block cap has been reached and control belongs to the user.
-            Otherwise read last_assistant_message and return {"ok": true}
-            only when the user's current objective and every stated acceptance
-            criterion are demonstrably complete, or when a declared safety or
-            budget boundary requires a clearly reported stop. Otherwise return
-            {"ok": false, "reason": "<the next missing evidence or action>"}.
-            Hook input: $ARGUMENTS
+description: Triage and execute complex code changes through a small ledger-driven loop with command evidence, stale-input fingerprints, and just-in-time lookup of shared department knowledge. Explicit invocation arms a completion gate only after Plan or Loop triage on hosts that provide one. Use for cross-component or multi-session changes, migrations, shared interfaces, large web applications, external NX or Flomaster integrations, or code changes with rollback or silent-corruption risk. Do not use for research-only work, report generation, or a clearly one-step edit.
 ---
 
 # Loop Code
 
-Start from the user's goal, not a requested specification ceremony. Treat the
-ledger as durable state and each session as replaceable working memory.
+Use the smallest lane that can verify the user's outcome. The ledger is durable
+task state, not a general agent framework and not a replacement for host goals.
 
-## 0. Start the host goal
+## 1. Triage before creating state
 
-When the user explicitly invokes this skill, enable the host's persistent goal
-mechanism before triage.
+Choose and announce one lane:
 
-- **Codex**: call `get_goal`. Reuse a matching active goal; if none is active,
-  call `create_goal` with the user's requested outcome and completion condition.
-  Do not merely print `/goal` or run a nested Codex CLI. At a true terminal
-  state, call `update_goal` with `complete` or, only under that tool's repeated
-  blocker rule, `blocked`.
-- **Claude Code**: `/goal` is a built-in user command with no tool surface, so
-  the assistant cannot enable it. There is no settings key, environment
-  variable, CLI flag, or hook that sets a goal on the assistant's behalf; the
-  only non-interactive form is the user launching `claude -p "/goal <condition>"`.
-  Two mechanisms cover it instead.
-  - The `Stop` prompt hook in this file's frontmatter is the same machinery:
-    per the official docs, `/goal` is itself a wrapper around a session-scoped
-    prompt-based `Stop` hook. Claude Code registers a skill's frontmatter hooks
-    when the skill is invoked and keeps running them for the rest of the
-    session, including turns after the skill's own turn. That session scope is
-    deliberate here, because a Loop spans turns; `once: true` would disarm the
-    gate after one evaluation. Only subagent hooks are scoped to the
-    component's lifetime. The hook evaluates completion at `Stop` and continues
-    the same turn when evidence is missing. Do not try to invoke a nested slash
-    command.
-  - The hook is not a goal object. It creates no `◎ /goal active` indicator, no
-    `/goal` status readout, and no `--resume` restoration, so a session running
-    on the hook alone looks exactly like a session with nothing armed.
-  - When triage selects **Plan** or **Loop**, print exactly one ready-to-paste
-    line so the user can arm the built-in mechanism as well, then continue
-    without waiting for an answer:
-    `/goal <condition> — 또는 N턴 후 중단`
-    Say once why both exist: the Stop hook lives only as long as this session,
-    while a user-set `/goal` persists across turns, survives `--resume`, and is
-    what actually carries a multi-session Loop. Do not repeat this in later
-    turns.
-  - Write that condition for the evaluator that will read it. It is the small
-    fast model, it runs after every turn, and it judges **only what the
-    conversation already shows** — it does not run commands or read files. So
-    state the end state as something this session must print: name the command
-    and the observable result (`selftest.py 를 돌려 SELFTEST_PASS 를 출력`),
-    not an unobservable property (`코드가 정확함`). Include the constraints that
-    must not change on the way there, and a turn or time bound so the loop
-    cannot run forever. The condition may be up to 4,000 characters.
-  - Report status honestly. The assistant cannot read whether a goal is
-    active; only the user can, by running `/goal` with no arguments. Never
-    claim a goal is on. `/goal` is unavailable in an untrusted workspace, when
-    `disableAllHooks` is true, or when `allowManagedHooksOnly` is set — in
-    those cases the command says why, and the ledger loop carries the work
-    alone.
+- **Direct**: local, reversible, and one clear verifier. Create neither a goal
+  nor a ledger.
+- **Plan**: several dependent steps that one healthy session should finish.
+  Draft observable acceptance and a bound; use the native goal after triage.
+- **Loop**: cross-session/component work, shared contracts, external application
+  state, or rollback/silent-corruption risk. Use a bounded v4 ledger and, when
+  supported, the native goal after triage.
 
-  Source: <https://code.claude.com/docs/en/goal> (verified 2026-08-19).
+Project size alone does not force Loop. Escalate only when evidence invalidates
+the current lane. If Plan needs durable recovery or the host has no goal
+facility, use the same bounded ledger as Loop.
 
-If the host lacks its goal facility or policy disables hooks, report that once
-and continue with the bounded ledger loop. Goal activation never expands tool
-authority, permissions, or safety boundaries.
+For Plan and Loop, write one completion condition containing:
 
-## 1. Triage the goal
+- the exact verifier command as an argv-safe display;
+- expected exit code and observable output;
+- files/state that must be preserved; and
+- a turn or time bound.
 
-Choose the smallest lane that can verify the result:
+Then route by host:
 
-- **Direct**: local, reversible, one clear verifier.
-- **Plan**: several dependent steps that one healthy session can finish.
-- **Loop**: cross-session or cross-component work, shared contracts, external
-  application state, iterative convergence, or rollback/silent-corruption risk.
+- **Codex**: use native goal tools after triage. Reuse a matching active goal;
+  otherwise create it from the condition. Mark it complete only at a true
+  terminal state and follow the runtime's blocker rule.
+- **Claude Code**: print one ready-to-paste line, `/goal <condition>`. The user
+  must run it. Never claim that the assistant activated or inspected the goal;
+  `/goal` with no arguments is the user's status check.
+- **No goal/hook support**: state that once and rely on the bounded ledger.
 
-Project size alone does not force Loop. Announce the lane and reason in Korean.
-Escalate only when evidence invalidates the current lane.
+Claude's `/goal` keeps the current or resumed session working; the ledger keeps
+durable task state and evidence. It does not let the evaluator read files or run
+commands. See `references/runtime-routing.md` only when Plan/Loop is selected or
+runtime behavior is unclear.
 
-## 2. Bootstrap the ledger
+## 2. Freeze the Loop contract
 
-For Loop, create
-`.loop/<yyyyMMdd-HHmmss>-<short-slug>/loop-ledger.json` from
-`assets/loop-ledger.template.json`; append `-2`, `-3`, and so on for collisions.
-Fill objective, `baseline.workspace`, scope, authority, at least one acceptance
-criterion, the exact verifier inputs in `baseline.protected_inputs`, and at
-least one non-null iteration or deadline limit. Add rollback when persisted or
-external state can change. Read `references/ledger-contract.md` when needed.
+For Loop, copy `assets/loop-ledger.template.json` to
+`.loop/<yyyyMMdd-HHmmss>-<slug>/loop-ledger.json`. Fill objective, scope,
+interfaces, authority, exact workspace, acceptance, protected inputs, rollback,
+and at least one deadline or iteration limit. Show the drafted contract once
+before the first mutation; ask only questions that set a ledger field.
 
-Create the ledger without asking the user to write a full spec. Fill every field
-you can from code, tests, history, docs, and safe probes first, then ask only
-about what is left.
+Use v4 for new ledgers. `loopctl.py` reads v3 by strict in-memory normalization
+without rewriting it. Mutating commands reject v3. Read
+`references/ledger-contract.md` when creating, repairing, or interpreting a
+ledger.
 
-For Loop only, the criteria the loop will spend its budget against are inferred,
-not agreed. Before the first mutation, print the drafted objective, scope in/out
-and interfaces, each acceptance criterion with its exact verifier command, and
-the limits. That draft is the blueprint the user reacts to; build no separate
-mockup. In the same round, ask what the repository could not answer — intent,
-priority, constraint, brownfield behavior — and name for each the ledger field
-the answer sets. Skip any question that sets no field. When approaches diverge in
-the shape of the diff, put the competing snippets in the question itself (Claude
-Code: the option `preview` field) so the user compares artifacts, not
-descriptions. The gate closes when scope, acceptance, and limits are settled,
-never on a self-assigned clarity score. One round, not an interview phase;
-`user_accepted` at the final gate arrives too late to redirect the work.
-
-Keep parser keys/enums in English. Use free text in the language that makes the
-handoff most reliable; report progress to the user in Korean.
-
-## 3. Reduce unknowns and plan
-
-Record only useful uncertainty:
+Record only actionable uncertainty:
 
 - **KK**: verified fact with provenance;
-- **KU**: explicit question with the cheapest decisive probe;
-- **UK**: likely knowledge in code, tests, history, docs, tools, or the user;
-- **UU**: blind-spot hypothesis plus a falsification probe.
+- **KU**: known question with the cheapest decisive probe;
+- **UK**: likely knowledge in code, history, docs, tools, KG, or the user;
+- **UU**: blind-spot hypothesis with a falsification probe.
 
-Treat the curated shared KG wiki as the source of truth for reusable department
-procedures, terminology, design rationale, lessons learned, and tacit knowledge.
-It does not override repository code/tests, live external state, or a current
-user decision.
+Use `$kg-lookup` just in time for missing internal terminology, procedure,
+rationale, or system context. KG evidence does not override code/tests, live
+state, or the user's current decision and does not reveal unknown unknowns.
 
-Before asking the user or copying a department rule into the ledger, run
-`kg-lookup` with the original objective and current slice. Let a worker with KG
-access call it directly, just in time; do not make the coordinator pre-search
-every task. If lookup finds nothing useful, record the gap as an unknown.
+Create a task packet from `assets/task-packet.template.json` only for delegated
+mutation or an independent review. Premortem is optional and justified only by irreversible or
+persisted changes, shared migrations, unclear rollback, or plausible silent
+corruption. Keep the coordinator as the only ledger writer.
 
-Preload only a KG fact that is mandatory for safety, the frozen contract, or
-consistent parallel work. Put its short statement and KG-relative wiki path in
-the existing task-packet `facts`. If that exact note snapshot must remain fixed,
-include the note path in the existing `loopctl.py fingerprint` scope so its
-SHA-256 is captured with the other inputs. Do not copy note bodies or search
-transcripts into the ledger, and do not add a retrieval manifest, index revision,
-or separate KG-staleness state until a real run demonstrates the need.
+## 3. Execute one bounded slice
 
-Build the smallest plan that closes acceptance criteria. Use a fresh-context
-premortem only for irreversible or persisted changes, shared migrations,
-NX/Flomaster writes, units/coordinate/material semantics, unclear rollback, or
-plausible silent corruption. Freeze one bounded task packet, then use fresh,
-read-only roles in two waves:
+Build the smallest plan that closes an open acceptance. Read independent inputs
+in parallel; sequence overlapping writes or isolate them. Preserve source
+NX/Flomaster files and confirm rollback before mutation.
 
-- Thesis proposes the minimal safe plan and its invariants.
-- Anti-thesis receives the same packet, but not the preferred plan or its
-  reasoning, and lists failure cases plus falsification probes.
-- Synthesis runs after both, compares their outputs against the contract and
-  verifiers, then accepts, rejects with evidence, or converts each finding into
-  an unknown or acceptance criterion.
+Before a delegated slice, fingerprint the frozen ledger and exact inputs. On
+`STALE_INPUT`, refresh and reissue the slice. Run ledger-mutating controller
+commands serially; atomic replacement is not a multi-writer lock.
 
-Keep the coordinator as the only ledger writer.
+Classify failures before retrying: stale input/contract, deterministic verifier
+failure, or transient infrastructure failure. Refresh stale state, change the
+implementation for deterministic failures, and retry only bounded transient
+operations.
 
-Do not repeat premortem every round. Repeat it only after a material plan or
-contract change, or when a failed approach requires a genuinely different plan.
-After a candidate artifact exists, use one authorized cross-provider review:
-invoke `$claude-adversarial-review` from Codex or
-`/codex:adversarial-review` from Claude Code. Confirm explicit user
-authorization before sending repository content to the other provider or
-consuming its plan usage.
+After each v4 work round, advance the controller-owned counter:
 
-## 4. Execute a bounded slice
+```text
+python <skill-root>/scripts/loopctl.py round <ledger>
+```
 
-Keep the coordinator as the only ledger writer. Create a task packet only for a
-delegated mutation or independent review. Before delegated work, capture and
-verify the frozen ledger and exact input files with `loopctl.py fingerprint`.
-On `STALE_INPUT`, re-read and reissue the packet.
+The counter is enforced only when this command is used. Deadline and explicit
+`control.budget_exhausted` remain independently enforceable; no scheduler or
+daemon is implied.
 
-Run ledger-mutating `loopctl.py` commands serially. Atomic replacement prevents
-partial files; it is not a multi-writer lock.
+## 4. Verify evidence
 
-Run independent reads in parallel. Sequence overlapping writes or isolate them
-in Git worktrees. Preserve source NX/Flomaster files and confirm rollback before
-mutation.
-
-Apply Ponytail only while generating code after acceptance is frozen: reuse
-repository patterns, then stdlib/native features, then installed dependencies,
-and make the smallest diff that satisfies the contract. Ponytail may simplify
-this skill during maintenance, but must not reduce runtime discovery, safety,
-verification, or explicit requirements.
-
-Classify a failed attempt before retrying: stale contract/input, deterministic
-verifier failure, or transient infrastructure failure. Refresh stale state,
-change the implementation for deterministic failures, and retry only a bounded
-transient operation. Never use blind retries to turn an invalid result into a
-pass.
-
-## 5. Produce evidence
-
-Resolve the installed skill root and define command verification as an argv
-array. Run without an unquoted shell string:
+Define command verifiers as argv arrays and run without a shell string:
 
 ```text
 python <skill-root>/scripts/loopctl.py run <ledger> --acceptance <AC-ID>
+python <skill-root>/scripts/loopctl.py stop <ledger> --json
 ```
 
-The runner records exit code, bounded output, output hashes, artifact hashes,
-contract hash, workspace, and protected-input fingerprint, then atomically
-updates the ledger. Lint and static typing check source-level rules; they do not
-validate runtime JSON or workflow state. The controller validates ledger shape
-and state invariants, while each verifier validates the produced result. Keep
-state-changing side effects behind those gates.
+Exit 0 is evidence of the command's internal contract only. It is not proof of
+external reality; a generator checking its own output is not independent
+verification. NX, Flomaster, browser, and field acceptance require a live probe
+or a human gate when the result cannot be observed safely by command/API.
 
-Use a human verifier only when no safe command, file, API, or test can observe
-the result; only the user may set `user_accepted: true`. If protected inputs or
-reviewed artifacts exist, capture one fingerprint over their union after the
-review, save it, and record its ledger-relative path as
-`fingerprint_snapshot`. A later file, contract, or workspace change makes that
-acceptance stale.
+For human evidence, record the required attestation and a fingerprint over all
+reviewed artifacts plus protected inputs. `actor` is audit text, not
+cryptographic identity. A changed contract, artifact, or fingerprinted input
+makes the attestation stale.
 
-For NX/Flomaster work, include applicable version, input/output identity, units,
-coordinate or material semantics, external process result, and source recovery.
+Command freshness covers only declared protected inputs and artifacts. It does
+not protect undeclared dependencies. Dirty Git state is reported; exact revision
+mode separately compares the declared baseline to actual `HEAD`.
 
-## 6. Stop through five states
+## 5. Stop on machine state
 
-After each bounded round, update `progress.iteration` and run:
+Use `stop --json` after every bounded round. Obey this precedence:
 
-```text
-python <skill-root>/scripts/loopctl.py stop <ledger>
-```
+1. `STOP_SAFETY` -- authority or safety blocker;
+2. `STALE_INPUT` -- contract, revision, protected input, artifact, or evidence changed;
+3. `STOP_SUCCESS` -- all acceptance current and no critical unknown open;
+4. `WAITING_HUMAN` -- every remaining acceptance is a human gate;
+5. `STOP_BUDGET` -- deadline, iteration, or explicit budget boundary reached;
+6. `CONTINUE` -- one concrete safe slice remains.
 
-Obey the emitted state:
+Do not hide an answerable human gate as `CONTINUE` or an unsafe blocker as a
+budget stop. Resolve critical unknowns before success. Report state, acceptance
+passed/total, stale reasons, blockers, limit, rollback, and the next action in
+Korean; never invent a completion percentage.
 
-- `STOP_SUCCESS`: every acceptance has current evidence and no critical unknown remains;
-- `STOP_BUDGET`: the declared iteration/deadline boundary is reached;
-- `STOP_SAFETY`: authority, data-loss, destructive, or security boundary is hit;
-- `STALE_INPUT`: accepted evidence no longer matches the contract or artifacts;
-- `CONTINUE`: one concrete affordable slice remains.
+## 6. Review and resume
 
-If an unresolved unknown makes the next action unsafe, set `authority.blocked`
-and stop safely. Do not add a new state until a real run needs distinct handling.
+Resume from ledger evidence, not transcript memory. A fresh non-forked subagent
+does not automatically receive parent history or invoked skills; provide the
+bounded packet or explicitly preload the skill when needed.
 
-## 7. Refresh and report
+Detect optional cross-provider review locally. Before sending repository
+content to another provider or consuming paid usage, obtain explicit user
+approval. If unavailable or unapproved, perform a fresh local independent
+review. Do not make a plugin, MCP service, settings change, dashboard, database,
+telemetry service, or workflow engine for this fallback.
 
-Run `plan -> optional premortem -> implement -> verify`; repeat only for an open
-acceptance criterion or evidence that invalidates the plan. Checkpoint at phase
-boundaries, compaction, a configured runtime soft cap, repeated exploration,
-contract contradiction, stale reuse, or tool-output domination. Resume from the
-ledger, not a transcript summary. A configured token cap is an operating policy,
-not a universal quality cliff.
-
-After triage and each gate, report in Korean: completed/current work, acceptance
-passed/total, iteration/limit, blocking unknowns, rollback state, and next
-evidence. Never invent a completion percentage.
-
-Read `references/runtime-routing.md` only after selecting Loop or when runtime
-routing is unclear.
-
-## Boundaries
-
-This is a hybrid harness: scripts verify mechanical evidence; the coordinator
-still classifies semantic facts and must invoke them. The self-test validates the
-controller, not workflow usefulness. Do not add hooks, states, or new framework
-layers until a real Vue/NX/Flomaster run exposes a repeated failure.
-
-Command-evidence freshness covers the contract (including workspace), verifier
-definition, `baseline.protected_inputs`, and declared artifacts. Human evidence
-gets the same file freshness only when its fingerprint snapshot is recorded.
-`stop` does not rerun a verifier, observe live external application state, or
-hash undeclared inputs. Declare every exact relevant source/test/config input
-and rerun acceptance after changes that its evidence cannot observe.
+The controller self-test proves its state machine and evidence mechanics, not
+workflow ROI. Stop when acceptance is current, safety blocks work, or the bound
+is reached.

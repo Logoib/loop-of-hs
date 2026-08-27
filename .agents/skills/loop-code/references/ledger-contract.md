@@ -1,85 +1,113 @@
-# Ledger contract
+# Ledger contract v4
 
-Read this only when initializing or repairing a Loop ledger.
+Read this when creating, repairing, or interpreting a Loop ledger. New ledgers
+use schema v4. The controller is a strict stdlib validator: unknown keys, enum
+values, missing required fields, duplicate IDs, and malformed hashes fail with
+`INVALID_INPUT` (exit 64).
 
-Set `baseline.workspace` explicitly. It may be an absolute project path or a
-path relative to the ledger directory; for `.loop/<task-id>/loop-ledger.json`,
-`../..` normally names the project root. The blank template is intentionally
-incomplete; fill the workspace before invoking `loopctl.py`.
+## Root and baseline
 
-## Controller validation
+The exact root keys are `schema_version`, `task_id`, `objective`, `scope`,
+`baseline`, `authority`, `limits`, `control`, `progress`, `acceptance`,
+`unknowns`, `decisions`, and `handoff`.
 
-Before fingerprint, acceptance, or stop decisions, the controller validates the
-runtime ledger contract. Required fields include a non-empty task/objective,
-scope arrays, workspace/environment/protected inputs/rollback, authority and
-control booleans, a non-empty acceptance list, unique IDs, and valid verifier
-arguments. `limits.max_iterations` may be null or a positive integer and
-`limits.deadline` may be null or an ISO-8601 datetime, but not both null.
+Set `baseline.workspace` explicitly. It may be absolute or ledger-relative; for
+`.loop/<task>/loop-ledger.json`, `../..` normally names the project root.
 
-Lint and static typing remain useful source checks; they do not replace runtime
-JSON validation. Runtime shape validation and semantic state rules are separate:
-a critical unknown cannot use `verified`, `falsified`, or `resolved` without
-non-empty evidence, and `accepted-risk` also requires user acceptance.
-This fixed local contract uses a small standard-library validator; Pydantic is
-not required unless multiple external schemas create enough duplication to
-justify that dependency.
+Protected inputs are exact files, never directories or annotated strings:
 
-List every exact source, test, configuration, or fixed knowledge note used by a
-verifier in `baseline.protected_inputs`. Directories and undeclared dependencies
-are intentionally outside the controller's freshness boundary.
+```json
+{"path": "src/config.json", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+```
 
-## Acceptance record
+Every v4 protected input requires a 64-character lowercase SHA-256. Missing
+files are reported as `missing`; directories as `not_file`; changed bytes as
+`changed`. Undeclared dependencies are outside the freshness boundary.
 
-Use a command verifier whenever a repeatable executable check exists.
+Revision is structured:
+
+```json
+{"mode": "exact", "value": "<git commit>"}
+```
+
+- `none`: value is null; no revision contract.
+- `recorded`: value is audit context only; this preserves historical v3
+  behavior.
+- `exact`: when workspace is a Git repository, actual `HEAD` must equal value.
+  A mismatch is stale; a non-Git workspace is `revision:non_git`.
+
+Git dirty state is reported independently. It is not itself stale because
+protected file hashes and verifier evidence define the declared byte boundary.
+Use `exact` plus protected inputs when both commit identity and file bytes are
+contractual.
+
+## Acceptance
+
+Use an argv command when a repeatable executable observation exists:
 
 ```json
 {
   "id": "AC-01",
-  "criterion": "The focused test passes and produces the expected artifact",
+  "criterion": "Focused test exits 0 and emits VERIFY_OK",
   "verifier": {
     "type": "command",
-    "argv": ["npm", "test", "--", "feature-name"],
+    "argv": ["py", "-3", "tests/test_feature.py"],
     "cwd": ".",
     "timeout_seconds": 300,
     "expected_exit_code": 0
   },
-  "artifacts": ["dist/result.json"],
+  "artifacts": ["build/result.json"],
   "status": "open",
   "evidence_files": []
 }
 ```
 
-Use a human verifier only when the result cannot be observed through a safe
-command, file, API, or test.
+`run` refuses an authority/safety blocker or stale exact revision/protected
+input before starting the subprocess. Otherwise it executes `argv` with
+`shell=False`, records bounded output, contract and workspace identity,
+protected-input hashes, and artifact hashes, then updates the v4 ledger
+atomically. A passed command must reference generated evidence.
+Exit 0 proves only that verifier's internal contract. It does not guarantee
+external reality, and a generator validating its own output is not independent
+verification.
+
+Use a human verifier only when command, file, API, or safe live probe cannot
+observe the result:
 
 ```json
 {
   "id": "AC-02",
-  "criterion": "The user confirms the NX model opens with correct geometry",
+  "criterion": "The reviewed model has correct geometry and units",
   "verifier": {
     "type": "human",
-    "instructions": "Open the copied result, inspect geometry and units"
+    "instructions": "Open the copied result and inspect geometry and units"
   },
   "artifacts": ["models/result.prt"],
   "status": "open",
-  "user_accepted": false,
-  "human_evidence": "",
-  "fingerprint_snapshot": "evidence/AC-02-fingerprint.json"
+  "evidence_files": [],
+  "attestation": {
+    "accepted": false,
+    "actor": "",
+    "attested_at": null,
+    "statement": "",
+    "fingerprint_snapshot": null
+  }
 }
 ```
 
-Only the user can set `user_accepted: true`. A model observation is not a human
-acceptance substitute. When protected inputs or reviewed artifacts exist,
-capture a fingerprint over their union after review and save the snapshot at
-`fingerprint_snapshot`. `stop` requires that snapshot to cover every declared
-path and still match the contract, workspace, and files. The field may be
-omitted only when neither set contains a path.
+When accepted, set status `passed`, `accepted: true`, a non-empty actor,
+ISO-8601 `attested_at`, a review statement, and a ledger-relative fingerprint
+snapshot. Capture the snapshot after review over the union of every reviewed
+artifact and protected input. `actor` is audit metadata, not cryptographic
+identity. Contract, workspace, artifact, or protected-input change makes the
+attestation stale.
 
-```text
-python <skill-root>/scripts/loopctl.py fingerprint capture --ledger <ledger> --workspace <workspace> --scope <protected-inputs-and-artifacts...> --output <snapshot>
-```
+NX, Flomaster, browser, and field acceptance cannot pass solely from generated
+files. Require a live probe or this human gate.
 
-## Unknown record
+## Unknowns and decisions
+
+The only v4 unknown shape is:
 
 ```json
 {
@@ -89,26 +117,67 @@ python <skill-root>/scripts/loopctl.py fingerprint capture --ledger <ledger> --w
   "impact": "critical",
   "status": "open",
   "safe_probe": "Run the isolated timeout test",
-  "user_accepted": false,
   "evidence": []
 }
 ```
 
-Closed statuses are `verified`, `falsified`, and `resolved`. `accepted-risk`
-closes a critical unknown only with `user_accepted: true`.
+Enums are:
 
-## Evidence boundary
+- `class`: `KK`, `KU`, `UK`, `UU`;
+- `impact`: `critical`, `noncritical`;
+- `status`: `open`, `verified`, `falsified`, `resolved`, `accepted-risk`.
 
-`loopctl.py run` creates command evidence and updates the ledger. Do not hand-edit
-command evidence. `loopctl.py stop` rejects evidence when its contract, verifier,
-workspace, protected-input fingerprint, or declared artifact hash no longer
-matches current state. This also protects artifact-free command acceptance when
-its exact dependencies are listed in `baseline.protected_inputs`.
+A closed critical unknown requires evidence. `accepted-risk` is a recorded
+decision, not identity authentication. Decisions use exactly `id`, `statement`,
+`rationale`, and string-array `evidence`.
 
-The controller does not hash undeclared verifier inputs, rerun a verifier during
-`stop`, or observe live external application state. Rerun the relevant
-acceptance after a change outside the declared file boundary.
+## v3 compatibility
 
-For a risky change, record rollback in `baseline.rollback`. Convert premortem or
-review findings into critical unknowns or acceptance criteria instead of adding
-a second workflow schema.
+`stop` and fingerprint reads normalize schema v3 in memory and never rewrite
+the source. `run` and `round` reject v3 before subprocess execution or writes.
+No migration command exists because it would add a second mutation path without
+being required for compatibility.
+
+Normalization accepts observed v3 forms:
+
+- unknown aliases `type/q/probe` become `class/statement/safe_probe`;
+- conflicting alias values are rejected rather than guessed;
+- noncritical legacy impact names become `noncritical` with diagnostics;
+- structured legacy evidence is preserved as canonical JSON text;
+- `path (SHA256 <64 hex>)` is split into path/hash;
+- plain paths have unknown hashes and remain readable; malformed annotations
+  are rejected with the expected format;
+- legacy revision becomes `recorded`, not retroactively `exact`;
+- a human verifier's legacy `user_accepted` becomes an unauthenticated
+  compatibility attestation;
+- an unknown's legacy `accepted-risk` closes only when `user_accepted` was true.
+  The normalizer records an explicit unauthenticated compatibility marker when
+  no evidence existed; false acceptance is reopened even if a note was present.
+
+Legacy evidence contract digests are evaluated against the original v3 view,
+so a historical `STOP_SUCCESS` does not fail merely because it was normalized.
+All normalization notes appear in `stop --json`.
+
+## State and machine output
+
+`stop --json` emits a stable object containing state, exit code, source schema,
+acceptance passed/total and per-item state/reasons, stale facets with expected
+and actual hashes, critical unknowns, authority/safety blockers, budget,
+workspace Git/revision/dirty information, normalization diagnostics, and next
+action.
+
+Precedence and exits:
+
+| State | Exit | Meaning |
+|---|---:|---|
+| `STOP_SAFETY` | 40 | authority or safety blocker |
+| `STALE_INPUT` | 33 | declared evidence/input/revision changed |
+| `STOP_SUCCESS` | 0 | all acceptance current; no critical unknown |
+| `WAITING_HUMAN` | 20 | every remaining item is an open human gate |
+| `STOP_BUDGET` | 31 | deadline/iteration/explicit budget reached |
+| `CONTINUE` | 10 | a safe executable slice remains |
+
+`round` atomically increments `progress.iteration` for v4. It cannot prevent an
+operator from skipping the command, so iteration is enforced only through this
+entry point. Deadline and explicit budget flags remain independently checkable;
+there is no scheduler or daemon.

@@ -1,62 +1,76 @@
 # Runtime routing
 
-Read this only after triage selects Loop.
+Official behavior below was verified on 2026-08-27 against Claude Code's
+[`/goal`](https://code.claude.com/docs/en/goal),
+[`hooks`](https://code.claude.com/docs/en/hooks),
+[`commands`](https://code.claude.com/docs/en/slash-commands),
+[`subagents`](https://code.claude.com/docs/en/sub-agents),
+[`context window`](https://code.claude.com/docs/en/context-window), and
+[`extension overview`](https://code.claude.com/docs/en/features-overview).
 
-## Codex
+## Capability matrix
 
-- On explicit `$loop-code` invocation, use the runtime goal tools as specified
-  in `SKILL.md`; the user should not need to prefix the request with `/goal`.
-- If goal tools are unavailable in an older client, fall back to
-  `/goal Use $loop-code to achieve: <one-line objective>` and report the
-  fallback.
-- Prefer GPT-5.6 Sol `xhigh` for coordination, planning, premortem, synthesis,
-  and final review. Keep these roles on Sol unless repository-specific UAT
-  shows that a cheaper model preserves semantic and safety decisions.
-- Prefer Luna `max` for bounded implementation and read-heavy exploration when
-  acceptance criteria are clear and command-verifiable. Treat it as a
-  cost-optimized worker, not a low-token or low-latency worker.
-- Escalate to Sol `high` for difficult or ambiguous implementation, weak
-  verifiers, external or persisted state, or a deterministic Luna failure that
-  needs stronger reasoning. Preserve one independent Sol `xhigh` final gate;
-  do not route every role to Luna by default.
-- Keep `ultra` off by default. Enable it only when real UAT shows that `xhigh`
-  plus the harness repeatedly misses a critical requirement.
-- Inspect the active client catalog and session budget. Do not infer Codex's
-  usable window from the API model maximum or a `model_context_window` override.
-- Treat `model_auto_compact_token_limit` as a checkpoint policy, not evidence of
-  a quality cliff. Resume from the ledger after compaction.
-- Use fresh subagents for noisy exploration or independent review and Git
-  worktrees only for concurrent writers.
-- For a high-risk premortem, run fresh read-only Thesis and Anti-thesis roles
-  independently from the same frozen task packet, then pass both outputs to a
-  fresh Synthesis role. Keep the preferred plan out of Anti-thesis context.
-- After a candidate artifact exists and the user authorizes cross-provider
-  review, invoke `$claude-adversarial-review`. It uses the authenticated
-  Claude subscription and consumes Claude plan usage.
+| Capability | Codex | Claude Code | loop-code rule |
+|---|---|---|---|
+| Goal activation | Native goal tool when exposed | User runs `/goal`; assistant has no activation/status tool | triage first; Plan/Loop only |
+| Durable task/evidence | v4 ledger | v4 ledger | ledger remains authoritative across sessions |
+| Goal resume | Host-defined | active condition restored on `--continue`, named/ID `--resume`, and picker | turn/time/token baselines can reset; ledger bounds remain durable |
+| Completion evaluation | host goal contract | prompt Stop hook sees conversation only; it calls no tools | surface exact verifier result in conversation |
+| Skill hook lifetime | host-defined | rest of current session once invoked | not a multi-session gate; v4 ships no skill Stop hook |
+| Subagent context | host-defined | non-fork starts fresh; fork inherits conversation | pass a packet or preload skills explicitly |
 
-Do not add custom agent profiles merely to encode the role table. Add them after
-a real run shows that prompt routing or inheritance is insufficient.
+## Claude Code contract
 
-## Claude Code
+`/goal` is a built-in shortcut for a session-scoped prompt-based `Stop` hook.
+Its evaluator cannot read files or run the verifier; it judges only facts Claude
+already surfaced in the conversation. Therefore the ready-to-paste condition
+must name the exact command, expected exit/output, preservation constraint, and
+turn/time bound.
 
-- The `SKILL.md` frontmatter installs a skill-scoped prompt `Stop` hook, the
-  supported automatic equivalent of Claude Code's session-scoped `/goal`
-  shortcut. Do not try to nest `/goal` inside the expanded skill prompt.
-- Verify account availability before pinning models.
-- Prefer Fable 5 for coordination, current Opus for difficult reasoning, and
-  current Sonnet for bounded implementation or research when available.
-- Use the scoped goal hook for serial convergence. Use dynamic workflows or
-  `ultracode` only for substantive repeatable fan-out or pipelines.
-- For a high-risk premortem, run fresh read-only Thesis and Anti-thesis roles
-  independently from the same frozen task packet, then pass both outputs to a
-  fresh Synthesis role. Use named fresh subagents, new non-resumed sessions, or
-  skill `context: fork`; do not use a parent-history `/subtask` fork.
-- After a candidate artifact exists and the user authorizes cross-provider
-  review, invoke `/codex:adversarial-review`.
+The user activates it. The assistant must not claim it ran `/goal` or inspected
+active state. `/goal` without arguments is the user's status check. An active
+condition is restored on supported resume routes, but turn count, timer, and
+token-spend baseline reset on resume. The ledger is what preserves cumulative
+task state and evidence.
 
-## Fallback
+Claude's hook reference says a skill-frontmatter hook lasts for the rest of the
+current session once invoked; a subagent-frontmatter hook lasts only while that
+subagent runs. Neither statement makes a skill hook a durable resume contract.
+v4 therefore removes the skill `Stop` hook instead of installing settings or a
+plugin.
 
-Preserve roles rather than brand names: strongest coordinator, independent
-reviewer when risk warrants it, and bounded workers. Report substitutions in
-Korean. Use filesystem, Git, and native agent primitives; add MCP only for live
-permission-scoped external systems or shared cross-machine state.
+For any Stop hook, `stop_hook_active: true` means Claude is already continuing
+because a Stop hook blocked. It is a re-entry signal, not proof that a cap was
+reached. Claude Code separately overrides the hook after 8 consecutive blocks.
+
+A normal non-forked subagent starts with fresh isolated context and does not see
+parent conversation, previously invoked skills, or previously read files.
+Forks inherit parent conversation; named skills can be preloaded through the
+subagent definition. Subagent lifetime and resume are independent of the main
+ledger.
+
+Skills are procedures that require model judgment, hooks are deterministic
+lifecycle enforcement, and subagents isolate work context. Adding Claude
+support does not require separate orchestration code.
+
+## Cross-provider review
+
+Detect optional review skills/plugins before use. Ask for explicit approval
+before sending repository content to another provider or consuming paid plan
+usage. If unavailable or unapproved, use a fresh local independent review. Do
+not edit `settings.json`, create a plugin, or make a provider mandatory.
+
+## Three-minute manual smoke test
+
+No chargeable `claude -p` run is part of routine validation. To test manually
+with a non-sensitive temporary fixture:
+
+1. Start trusted Claude Code and invoke `$loop-code` with a two-step Plan task.
+2. Confirm it chooses Plan before printing exactly one `/goal ...` line and does
+   not claim activation; paste the line, then run `/goal` to inspect it.
+3. Confirm the condition names an exact verifier result and bound. Resume the
+   session with a supported route and check that the condition returns, while
+   the ledger/evidence remains the durable cumulative record.
+
+If hooks are disabled or unavailable, confirm the skill reports the limitation
+once and continues with a bounded ledger.

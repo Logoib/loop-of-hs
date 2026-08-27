@@ -1,15 +1,18 @@
 {
-  "schema_version": 3,
-  "task_id": "",
-  "objective": "",
+  "schema_version": 4,
+  "task_id": "replace-me",
+  "objective": "Replace with an observable outcome",
   "scope": {
     "in": [],
     "out": [],
     "interfaces": []
   },
   "baseline": {
-    "workspace": "",
-    "revision": null,
+    "workspace": ".",
+    "revision": {
+      "mode": "none",
+      "value": null
+    },
     "environment": {},
     "protected_inputs": [],
     "rollback": ""
@@ -18,10 +21,11 @@
     "allowed_writes": [],
     "forbidden_actions": [],
     "requires_user_approval": [],
-    "blocked": false
+    "blocked": false,
+    "reasons": []
   },
   "limits": {
-    "max_iterations": null,
+    "max_iterations": 10,
     "deadline": null
   },
   "control": {
@@ -32,7 +36,22 @@
   "progress": {
     "iteration": 0
   },
-  "acceptance": [],
+  "acceptance": [
+    {
+      "id": "AC-01",
+      "criterion": "Replace with an observable criterion",
+      "verifier": {
+        "type": "command",
+        "argv": ["py", "-3", "-c", "print('VERIFY_OK')"],
+        "cwd": ".",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0
+      },
+      "artifacts": [],
+      "status": "open",
+      "evidence_files": []
+    }
+  ],
   "unknowns": [],
   "decisions": [],
   "handoff": {
