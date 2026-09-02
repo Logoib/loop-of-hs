@@ -1,5 +1,7 @@
 # loop-of-hs
 
+[English](./README.en.md) · **한국어**
+
 복잡한 코드 변경을 **ledger 기반 loop**로 처리하는 Claude Code · Codex 공용 skill
 (`loop-code`)과 그 설계 근거 문서를 담은 저장소다.
 
@@ -21,12 +23,14 @@
 ├─ SKILL.md                      # 워크플로 본문 + Stop hook frontmatter
 ├─ agents/openai.yaml            # Codex 표시 메타데이터
 ├─ assets/
-│  ├─ loop-ledger.template.json  # ledger 템플릿 (schema_version 3)
+│  ├─ loop-ledger.template.json  # ledger 템플릿 (schema_version 4)
 │  └─ task-packet.template.json  # 위임용 bounded task packet
 ├─ references/
 │  ├─ ledger-contract.md         # ledger 초기화·복구 시에만 읽는 계약
-│  └─ runtime-routing.md         # Loop 선택 후에만 읽는 runtime/모델 라우팅
-└─ scripts/loopctl.py            # 표준 라이브러리만 쓰는 controller
+│  ├─ runtime-routing.md         # Loop 선택 후에만 읽는 runtime/모델 라우팅
+│  └─ v4-review.md               # v4 계약 변경 근거와 검증 범위
+├─ scripts/loopctl.py            # 표준 라이브러리만 쓰는 controller
+└─ tests/test_loopctl.py         # controller 회귀 테스트
 
 docs/                            # 설계 결정과 조사 근거 (한국어)
 ```
@@ -77,7 +81,8 @@ goal
 → (위험할 때만) fresh-context premortem
 → implement
 → command / human verification
-→ five-state stop gate
+→ round 카운터 갱신
+→ six-state stop gate
 ```
 
 ## 1. 트라이지 — Direct / Plan / Loop
@@ -167,6 +172,8 @@ handoff뿐이다.
 
 핵심 규칙:
 
+- 새 ledger는 **schema_version 4**로 만든다. v3는 in-memory 정규화로 읽기만 하고,
+  ledger를 바꾸는 명령은 v3를 거부한다. 원본 v3 파일은 다시 쓰지 않는다.
 - `baseline.workspace`를 명시한다. `.loop/<task-id>/loop-ledger.json` 기준으로 보통
   `../..`가 프로젝트 루트다. 빈 템플릿은 의도적으로 불완전하다.
 - `limits.max_iterations`와 `limits.deadline` 중 **최소 하나**는 null이 아니어야
@@ -185,7 +192,7 @@ acceptance / unknown 레코드의 정확한 모양은
 
 ## 5. `loopctl.py`
 
-Python 표준 라이브러리만 쓰는 controller. 기능은 세 가지다.
+Python 표준 라이브러리만 쓰는 controller. 기능은 네 가지다.
 
 ```bash
 # 계약 + 정확한 파일 + (선택) Git HEAD 스냅샷
@@ -197,8 +204,11 @@ python <skill-root>/scripts/loopctl.py fingerprint verify \
 # acceptance 실행: exit/output/artifact SHA + workspace·protected-input fingerprint 기록
 python <skill-root>/scripts/loopctl.py run <ledger> --acceptance <AC-ID> [--output <evidence.json>]
 
-# 현재 증거를 다시 확인하고 다섯 상태 중 하나 계산
-python <skill-root>/scripts/loopctl.py stop <ledger>
+# bounded round 하나를 끝냈다고 표시: controller가 progress.iteration을 올린다
+python <skill-root>/scripts/loopctl.py round <ledger>
+
+# 현재 증거를 다시 확인하고 여섯 상태 중 하나 계산
+python <skill-root>/scripts/loopctl.py stop <ledger> [--json]
 
 python <skill-root>/scripts/loopctl.py --self-test
 ```
@@ -211,10 +221,12 @@ evidence는 손으로 편집하지 않는다.
 
 | 명령 | 출력 | 종료 코드 |
 |---|---|---:|
-| `fingerprint verify` | `MATCH` / `STALE_INPUT <mismatches>` | 0 / 33 |
+| `fingerprint verify` | `MATCH` / `STALE_INPUT <mismatches>` (`--json`이면 differences) | 0 / 33 |
 | `run` | `VERIFY_PASS`\|`VERIFY_FAIL` + AC-ID + 증거 경로 | 0 / 4 |
+| `round` | `ROUND <iteration>/<max\|->` | 0 |
 | `stop` | `STOP_SUCCESS` | 0 |
 | `stop` | `CONTINUE` | 10 |
+| `stop` | `WAITING_HUMAN` | 20 |
 | `stop` | `STOP_BUDGET` | 31 |
 | `stop` | `STALE_INPUT` | 33 |
 | `stop` | `STOP_SAFETY` | 40 |
@@ -224,14 +236,18 @@ evidence는 손으로 편집하지 않는다.
 더 이상 해시되지 않을 때**도 실패로 기록한다. 사라지거나 옮겨진 입력은 통과가 아니라
 결측 입력이다.
 
-## 6. 다섯 개 stop 상태
+## 6. 여섯 개 stop 상태
 
-각 bounded round 뒤 `progress.iteration`을 갱신하고 `stop`을 실행해 나온 상태를
-따른다.
+각 bounded round 뒤 `round`로 `progress.iteration`을 갱신하고 `stop --json`을 실행해
+나온 상태를 따른다. iteration 한도는 `round`를 호출할 때만 강제되고, deadline과
+명시적 `control.budget_exhausted`는 그와 무관하게 강제된다. 상태 우선순위는
+`STOP_SAFETY` → `STALE_INPUT` → `STOP_SUCCESS` → `WAITING_HUMAN` → `STOP_BUDGET` →
+`CONTINUE`다.
 
 | state | 의미 |
 |---|---|
 | `STOP_SUCCESS` | 모든 acceptance에 current evidence가 있고 critical unknown 없음 |
+| `WAITING_HUMAN` | 남은 acceptance가 전부 human gate라 모델이 더 진행할 수 없음 |
 | `STOP_BUDGET` | 명시된 iteration/deadline 경계 도달 |
 | `STOP_SAFETY` | 권한·data-loss·destructive·security 경계 |
 | `STALE_INPUT` | contract/workspace/input/verifier/artifact가 증거와 불일치 |
@@ -376,7 +392,7 @@ hybrid harness다 — 스크립트는 기계적 증거를 검증하고, coordina
 **확인됨** — Codex repository skill discovery, Claude `/loop-code` read-only
 discovery, junction identity/hash, user-global Codex config, skill schema, JSON 파싱,
 controller unit self-test, command evidence, stale artifact rejection,
-source/workspace drift 재현, five-state stop.
+source/workspace drift 재현, v4 schema 검증과 v3 read-only 정규화, six-state stop.
 
 **미확인** — 실제 변경을 수행하는 Claude/Codex workflow UAT, worker별 model routing,
 150K compaction 후 handoff 품질, 실제 Vue/NX/Flomaster task, 양 runtime의 user-global
